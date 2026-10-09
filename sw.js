@@ -1,5 +1,5 @@
 // Keeps the app opening offline. Network first, so updates show up whenever you're online.
-const CACHE = 'worklog-v1';
+const CACHE = 'worklog-v2';
 const FILES = ['./', './index.html', './manifest.json', './icon-180.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

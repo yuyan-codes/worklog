@@ -85,7 +85,10 @@ input,select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:
 textarea{min-height:70px;resize:vertical}
 input[type=checkbox]{width:22px;height:22px;accent-color:var(--accent)}
 .check{display:flex;align-items:center;gap:10px;font-weight:600}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.two>.f{min-width:0}
+input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;display:block;min-width:0;min-height:48px;text-align:left}
+.pick{display:flex;gap:8px}.pick input{flex:1;min-width:0}.pick button{flex:none;white-space:nowrap}
 #toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom));transform:translateX(-50%);
   background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-weight:600;font-size:14px;
   opacity:0;pointer-events:none;transition:opacity .2s;z-index:20;max-width:90%}
@@ -197,8 +200,10 @@ function field(f,v){
   if(f.type==='check')return `<div class="f"><label class="check"><input type="checkbox" id="${id}" ${v?'checked':''}>${esc(f.label)}</label></div>`;
   if(f.type==='textarea')return `<div class="f"><label for="${id}">${esc(f.label)}</label><textarea id="${id}" placeholder="${esc(f.ph||'')}">${esc(v)}</textarea></div>`;
   const dl=f.list?`<datalist id="dl_${f.k}">${f.list.map(o=>`<option value="${esc(o)}">`).join('')}</datalist>`:'';
-  return `<div class="f"><label for="${id}">${esc(f.label)}</label><input id="${id}" type="${f.type||'text'}" value="${esc(v)}"
-    ${f.list?`list="dl_${f.k}"`:''} placeholder="${esc(f.ph||'')}" ${f.type==='number'?'inputmode="decimal"':''} ${f.type==='tel'?'inputmode="tel"':''} autocomplete="off">${dl}</div>`;
+  const inp=`<input id="${id}" name="${f.ac||f.k}" type="${f.type||'text'}" value="${esc(v)}"
+    ${f.list?`list="dl_${f.k}"`:''} placeholder="${esc(f.ph||'')}" ${f.type==='number'?'inputmode="decimal"':''} ${f.type==='tel'?'inputmode="tel"':''} autocomplete="${f.ac||'off'}">`;
+  const btn=f.pick&&('contacts' in navigator)?`<button type="button" data-act="pickContact">📇 Contacts</button>`:'';
+  return `<div class="f"><label for="${id}">${esc(f.label)}</label>${btn?`<div class="pick">${inp}${btn}</div>`:inp}${dl}</div>`;
 }
 function form(title,fields,vals,onSave,onDelete){
   formState={fields,onSave,onDelete};
@@ -206,8 +211,8 @@ function form(title,fields,vals,onSave,onDelete){
   while(i<fields.length){const f=fields[i];
     if(f.pair&&fields[i+1]){html+=`<div class="two">${field(f,vals[f.k])}${field(fields[i+1],vals[fields[i+1].k])}</div>`;i+=2}
     else{html+=field(f,vals[f.k]);i++}}
-  $('#sheetBody').innerHTML=`<div class="sheet-head"><h2>${esc(title)}</h2><button class="ghost" data-act="closeForm">✕</button></div>${html}
-    <div class="btnrow"><button class="primary" data-act="saveForm">Save</button>${onDelete?'<button class="danger" data-act="delForm">Delete</button>':''}</div>`;
+  $('#sheetBody').innerHTML=`<form autocomplete="on" onsubmit="return false"><div class="sheet-head"><h2>${esc(title)}</h2><button class="ghost" data-act="closeForm">✕</button></div>${html}
+    <div class="btnrow"><button class="primary" data-act="saveForm">Save</button>${onDelete?'<button class="danger" data-act="delForm">Delete</button>':''}</div></form>`;
   $('#sheet').classList.remove('hidden');
   const p=$('#f_person');if(p)p.addEventListener('change',()=>{const ph=$('#f_phone');if(ph&&!ph.value){
     const hit=[...live('followups')].reverse().find(x=>x.person===p.value&&x.phone);if(hit)ph.value=hit.phone}});
@@ -234,10 +239,10 @@ const F={
     {k:'category',label:'Type',type:'choice',options:CATS},{k:'date',label:'Date',type:'date'},
     {k:'from',label:'From',type:'time',pair:true},{k:'to',label:'To',type:'time'},{k:'note',label:'Note',type:'textarea'}],
   task:edit=>[{k:'title',label:'Task',req:true,ph:'What needs doing'},{k:'company',label:'Company',type:'company'},
-    {k:'project',label:'Project',list:projects()},{k:'due',label:'Due',type:'date',pair:true},
+    {k:'project',label:'Project',list:projects()},{k:'due',label:'Due',type:'date'},
     {k:'priority',label:'Priority',type:'choice',options:['Normal','High']},{k:'notes',label:'Notes',type:'textarea'},
     ...(edit?[{k:'done',label:'Done',type:'check'}]:[])],
-  fu:edit=>[{k:'person',label:'Person',req:true,list:persons()},{k:'phone',label:'WhatsApp number',type:'tel',ph:'10-digit mobile'},
+  fu:edit=>[{k:'person',label:'Person',req:true,list:persons(),ac:'name',pick:true},{k:'phone',label:'WhatsApp number',type:'tel',ph:'10-digit mobile',ac:'tel'},
     {k:'what',label:'Waiting for',req:true,ph:'e.g. test report for BBBS PA module'},{k:'company',label:'Company',type:'company'},
     {k:'project',label:'Project',list:projects()},{k:'due',label:'Needed by',type:'date'},{k:'notes',label:'Notes',type:'textarea'},
     ...(edit?[{k:'done',label:'Received / closed',type:'check'}]:[])],
@@ -299,7 +304,7 @@ function pdayForm(n,tripId){
   },n?()=>{if(del('notes',n))closeForm()}:null)
 }
 function waNudge(f){
-  let p=(f.phone||'').replace(/\D/g,'');if(p.length===10)p='91'+p;
+  let p=(f.phone||'').replace(/\D/g,'');if(p.length===11&&p[0]==='0')p=p.slice(1);if(p.length===10)p='91'+p;
   const first=(f.person||'').split(' ')[0];const me=db.settings.myName||'Shubham';
   const txt=`Hi ${first}, following up on ${f.what}${f.due?` — needed by ${fmtDate(f.due)}`:''}. Please share an update. – ${me}`;
   put('followups',{...f,lastNudged:nowStamp()});
@@ -355,6 +360,8 @@ const ACT={
   taskFilter:a=>{db.taskFilter=a;save();render()},
   toggleDone:a=>{db[a]=!db[a];save();render()},
   exportHours:()=>exportHours(),
+  pickContact:async()=>{try{const[c]=await navigator.contacts.select(['name','tel'],{multiple:false});if(!c)return;
+    if(c.name&&c.name[0])$('#f_person').value=c.name[0];if(c.tel&&c.tel[0])$('#f_phone').value=c.tel[0];}catch(e){toast('Could not open contacts')}},
   closeForm:()=>closeForm(),
   saveForm:()=>{const v=readForm();if(v)formState.onSave(v)},
   delForm:()=>formState.onDelete(),
