@@ -13,32 +13,43 @@
 <title>WorkLog</title>
 <style>
 :root{
-  --bg:#f4f5f7; --card:#ffffff; --ink:#111827; --mute:#6b7280; --line:#e5e7eb;
-  --accent:#1d4ed8; --danger:#dc2626; --ok:#059669; --warn:#b45309; --chip:#eef0f3;
+  --bg0:#f4f5f7; --tint:var(--bg0); --bg:color-mix(in srgb,var(--tint) 8%,var(--bg0)); --card:#ffffff; --ink:#111827; --mute:#6b7280; --line:#e5e7eb;
+  --accent:var(--co-accent,#1d4ed8); --on-accent:var(--co-on,#fff); --danger:#dc2626; --ok:#059669; --warn:#b45309; --chip:#eef0f3;
 }
 @media (prefers-color-scheme:dark){
-  :root{--bg:#0b0f17; --card:#151b26; --ink:#eef1f6; --mute:#94a0b3; --line:#263042;
-    --accent:#60a5fa; --danger:#f87171; --ok:#34d399; --warn:#fbbf24; --chip:#1e2633;}
+  :root{--bg0:#0b0f17; --card:#151b26; --ink:#eef1f6; --mute:#94a0b3; --line:#263042;
+    --accent:var(--co-accent,#60a5fa); --on-accent:var(--co-on,#0b0f17); --danger:#f87171; --ok:#34d399; --warn:#fbbf24; --chip:#1e2633;}
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--ink);
   font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif}
 header{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;align-items:center;gap:8px;
   padding:calc(env(safe-area-inset-top) + 10px) 16px 8px}
+header{flex-wrap:wrap}
 header h1{font-size:26px;margin:0;flex:1;letter-spacing:-.02em}
+#coBar{flex-basis:100%;display:none;align-items:center;gap:8px;margin-top:8px;padding:8px 12px;border-radius:12px;font-size:14px;font-weight:600;color:var(--ink);background:color-mix(in srgb,var(--accent) 16%,transparent);border:1px solid color-mix(in srgb,var(--accent) 40%,transparent)}
+#coBar.on{display:flex}
+#coBar .pulse{width:9px;height:9px;border-radius:50%;background:var(--accent);flex:none;animation:pl 2s infinite}
+#coBar .el{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--mute)}
+@keyframes pl{50%{opacity:.35}}
 #status{font-size:12px;color:var(--mute);text-align:right}
 main{padding:4px 16px calc(96px + env(safe-area-inset-bottom));max-width:640px;margin:0 auto}
 button{font:inherit;color:inherit;border:0;background:var(--chip);border-radius:12px;padding:10px 14px;cursor:pointer}
 button:active{transform:scale(.97)}
 .ghost{background:transparent;padding:8px}
-.primary{background:var(--accent);color:#fff;font-weight:600}
-@media (prefers-color-scheme:dark){.primary{color:#0b0f17}}
+.primary{background:var(--accent);color:var(--on-accent);font-weight:600}
+html,body,header{transition:background-color .4s}
 .danger{background:transparent;color:var(--danger);font-weight:600}
 .card{background:var(--card);border-radius:16px;padding:14px;margin:12px 0;border:1px solid var(--line)}
 .label{font-size:13px;font-weight:600;color:var(--mute);text-transform:uppercase;letter-spacing:.04em;margin:18px 2px 6px}
 .card .label{margin-top:0}
-.cos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.co{background:var(--co);color:#fff;font-weight:700;font-size:17px;padding:18px 0;border-radius:14px}
+.cos{display:grid;grid-template-columns:1fr;gap:8px}
+.co{background:color-mix(in srgb,var(--co) 9%,var(--card));color:var(--mute);font-weight:600;font-size:14px;padding:12px 16px;border-radius:14px;border:1px solid color-mix(in srgb,var(--co) 30%,var(--line));display:flex;align-items:center;justify-content:space-between;min-height:64px}
+@media (prefers-color-scheme:dark){img.inv{filter:invert(1) brightness(.92)}}
+.co img{height:36px;max-width:62%;object-fit:contain;object-position:left center}
+.co.run{border:2px solid var(--co);color:var(--ink)}
+.logochip{display:inline-flex;align-items:center;margin-bottom:6px}
+.logochip img{height:20px;display:block}
 .timer{border-left:6px solid var(--co)}
 .timer .big{font-size:20px;font-weight:700;margin:2px 0}
 .elapsed{font-size:40px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
@@ -88,19 +99,39 @@ input[type=checkbox]{width:22px;height:22px;accent-color:var(--accent)}
 .two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
 .two>.f{min-width:0}
 input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;display:block;min-width:0;min-height:48px;text-align:left}
+.more{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+.more summary{color:var(--mute);font-weight:600;font-size:14px;cursor:pointer;padding:6px 0}
+.qd{cursor:pointer}
 .pick{display:flex;gap:8px}.pick input{flex:1;min-width:0}.pick button{flex:none;white-space:nowrap}
 #toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom));transform:translateX(-50%);
   background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-weight:600;font-size:14px;
   opacity:0;pointer-events:none;transition:opacity .2s;z-index:20;max-width:90%}
 #toast.show{opacity:1}
+.dash{display:grid;grid-template-columns:minmax(320px,1fr) minmax(0,1fr) minmax(0,1fr);gap:24px;align-items:start}
+.dash>div>.row{margin:12px 0 0}.dash>div>.row .label{margin:0}
+.dash .card{margin-top:10px}
+.brand{display:none}
+@media (min-width:1000px){
+  body{padding-left:230px}
+  nav{top:0;bottom:0;left:0;right:auto;width:230px;display:flex;flex-direction:column;gap:4px;border-top:0;border-right:1px solid var(--line);padding:22px 14px}
+  nav .brand{display:block;font-size:22px;font-weight:800;letter-spacing:-.02em;padding:4px 14px 18px;color:var(--ink)}
+  nav button{flex-direction:row;justify-content:flex-start;gap:12px;font-size:15px;padding:11px 14px;border-radius:10px}
+  nav button.on{background:color-mix(in srgb,var(--accent) 13%,transparent)}
+  header{max-width:1400px;margin:0 auto;padding:22px 32px 6px}
+  main{max-width:1400px;padding:4px 32px 40px}
+  .sheet{align-items:center}.sheet-body{border-radius:20px;max-width:560px}
+  #toast{bottom:30px}
+  .item .main,.tick,.wa,.fchip,.co,[data-act]{cursor:pointer}
+}
 .btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .btnrow button{flex:1;min-width:120px}
 </style>
 </head>
 <body>
-<header><h1 id="title">WorkLog</h1><div id="status"></div><button class="ghost" data-act="go" data-arg="settings" aria-label="Settings">⚙︎</button></header>
+<header><h1 id="title">WorkLog</h1><div id="status"></div><button class="ghost" data-act="go" data-arg="settings" aria-label="Settings">⚙︎</button><div id="coBar" data-act="go" data-arg="home"></div></header>
 <main id="main"></main>
 <nav id="nav">
+  <div class="brand">WorkLog</div>
   <button data-act="go" data-arg="home" data-v="home"><i>◉</i>Home</button>
   <button data-act="go" data-arg="hours" data-v="hours"><i>◷</i>Hours</button>
   <button data-act="go" data-arg="trips" data-v="trips"><i>✈︎</i>Trips</button>
@@ -113,7 +144,19 @@ input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;displa
 <script>
 /* ---------- data ---------- */
 const COS=['RFME','LPHC','PFTD'];
-const CO_COLOR={RFME:'#2563eb',LPHC:'#059669',PFTD:'#d97706'};
+const CO_COLOR={RFME:'#0b6cbd',LPHC:'#e8a900',PFTD:'#52525b'};
+const DARK=matchMedia('(prefers-color-scheme: dark)');
+const ACC={RFME:{l:['#0b6cbd','#fff'],d:['#4ea3ec','#0b0f17']},LPHC:{l:['#c98f00','#fff'],d:['#f2b705','#1a1400']},PFTD:{l:['#3f3f46','#fff'],d:['#d4d4d8','#0b0f17']}};
+function applyAccent(){const r=document.documentElement.style,tt=T(),c=tt&&tt.company;
+  if(c&&ACC[c]){const[a,o]=ACC[c][DARK.matches?'d':'l'];r.setProperty('--co-accent',a);r.setProperty('--co-on',o);r.setProperty('--tint',CO_COLOR[c])}
+  else['--co-accent','--co-on','--tint'].forEach(k=>r.removeProperty(k));
+  const m=document.querySelector('meta[name=theme-color]');if(m)m.content=getComputedStyle(document.body).backgroundColor}
+DARK.addEventListener&&DARK.addEventListener('change',()=>applyAccent());
+const CO_NAME={RFME:'RF Microtech Electronics',LPHC:'Life Pro Healthcare',PFTD:'PIPL FutureTech Dynamics'};
+function coBar(){const b=$('#coBar'),t=T();if(!t){b.className='';b.innerHTML='';return}
+  b.className='on';b.innerHTML=`<span class="pulse"></span><span>${esc(CO_NAME[t.company]||t.company)}</span><span class="el">${fmtH(diffH(t.start,new Date()))}</span>`}
+const logo=c=>`logo-${c.toLowerCase()}.png`;
+const logoImg=c=>`<img src="${logo(c)}" alt="${c}" class="${c==='PFTD'?'inv':''}">`;
 const CATS=['Work','Meeting','Site visit','Travel'];
 const TYPES=['hours','trips','notes','tasks','followups'];
 const BOOL=['deleted','done','personal','billsSubmitted'];
@@ -136,6 +179,9 @@ const nowTime=()=>{const d=new Date();return `${pad(d.getHours())}:${pad(d.getMi
 const nowStamp=()=>today()+'T'+nowTime();
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const live=t=>db[t].filter(r=>!r.deleted);
+const doneH=()=>live('hours').filter(h=>h.end);
+const T=()=>live('hours').filter(h=>!h.end).sort((a,b)=>b.start.localeCompare(a.start))[0]||null;
+const WIDE=matchMedia('(min-width: 1000px)');
 const MO=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const DAY=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 function fmtDate(s,withDay){if(!s)return'';const[y,m,d]=s.slice(0,10).split('-').map(Number);
@@ -197,6 +243,10 @@ function field(f,v){
     const opts=f.type==='company'?COS:f.options;
     return `<div class="f"><label>${esc(f.label)}</label><div class="chips">${opts.map(o=>
       `<label class="chip"><input type="radio" name="${id}" value="${esc(o)}" ${v===o?'checked':''}><span>${esc(o)}</span></label>`).join('')}</div></div>`}
+  if(f.type==='quickdate'){const q=[['Today',0],['Tomorrow',1],['In 3 days',3],['Next week',7]];
+    return `<div class="f"><label>${esc(f.label)}</label><div class="chips">${q.map(([l,n])=>
+      `<span class="fchip qd" data-act="qd" data-arg="${n}">${l}</span>`).join('')}</div>
+      <input id="${id}" type="date" value="${esc(v)}" style="margin-top:8px"></div>`}
   if(f.type==='check')return `<div class="f"><label class="check"><input type="checkbox" id="${id}" ${v?'checked':''}>${esc(f.label)}</label></div>`;
   if(f.type==='textarea')return `<div class="f"><label for="${id}">${esc(f.label)}</label><textarea id="${id}" placeholder="${esc(f.ph||'')}">${esc(v)}</textarea></div>`;
   const dl=f.list?`<datalist id="dl_${f.k}">${f.list.map(o=>`<option value="${esc(o)}">`).join('')}</datalist>`:'';
@@ -207,7 +257,10 @@ function field(f,v){
 }
 function form(title,fields,vals,onSave,onDelete){
   formState={fields,onSave,onDelete};
-  let html='',i=0;
+  let html='',i=0;const main=fields.filter(f=>!f.more),more=fields.filter(f=>f.more);
+  const draw=list=>{let s='',j=0;while(j<list.length){const f=list[j];
+    if(f.pair&&list[j+1]){s+=`<div class="two">${field(f,vals[f.k])}${field(list[j+1],vals[list[j+1].k])}</div>`;j+=2}else{s+=field(f,vals[f.k]);j++}}return s};
+  html=draw(main)+(more.length?`<details class="more"><summary>More details</summary>${draw(more)}</details>`:'');i=fields.length;
   while(i<fields.length){const f=fields[i];
     if(f.pair&&fields[i+1]){html+=`<div class="two">${field(f,vals[f.k])}${field(fields[i+1],vals[fields[i+1].k])}</div>`;i+=2}
     else{html+=field(f,vals[f.k]);i++}}
@@ -242,10 +295,13 @@ const F={
     {k:'project',label:'Project',list:projects()},{k:'due',label:'Due',type:'date'},
     {k:'priority',label:'Priority',type:'choice',options:['Normal','High']},{k:'notes',label:'Notes',type:'textarea'},
     ...(edit?[{k:'done',label:'Done',type:'check'}]:[])],
-  fu:edit=>[{k:'person',label:'Person',req:true,list:persons(),ac:'name',pick:true},{k:'phone',label:'WhatsApp number',type:'tel',ph:'10-digit mobile',ac:'tel'},
-    {k:'what',label:'Waiting for',req:true,ph:'e.g. test report for BBBS PA module'},{k:'company',label:'Company',type:'company'},
-    {k:'project',label:'Project',list:projects()},{k:'due',label:'Needed by',type:'date'},{k:'notes',label:'Notes',type:'textarea'},
-    ...(edit?[{k:'done',label:'Received / closed',type:'check'}]:[])],
+  fu:edit=>[{k:'person',label:'Who',req:true,list:persons(),ac:'name',pick:true},
+    {k:'what',label:'What you need from them',req:true,ph:'e.g. VSWR report for BBBS PA module'},
+    {k:'due',label:'By when',type:'quickdate'},
+    ...(edit?[{k:'done',label:'Received — close it',type:'check'}]:[]),
+    {k:'phone',label:'WhatsApp number',type:'tel',ph:'Filled from contacts',ac:'tel',more:true},
+    {k:'company',label:'Company',type:'company',more:true},{k:'project',label:'Project',list:projects(),more:true},
+    {k:'notes',label:'Notes',type:'textarea',more:true}],
   trip:()=>[{k:'company',label:'Company',type:'company'},{k:'purpose',label:'Purpose',req:true,ph:'e.g. SRS exhibition – Histolog'},
     {k:'city',label:'City'},{k:'startDate',label:'From',type:'date',pair:true},{k:'endDate',label:'To',type:'date'},
     {k:'advance',label:'Advance received (₹)',type:'number'},{k:'billsSubmitted',label:'Food bills handed to accounts',type:'check'}],
@@ -258,15 +314,15 @@ const F={
 function startTimer(co){
   const lastP=(live('hours').filter(h=>h.company===co).sort((a,b)=>b.start.localeCompare(a.start))[0]||{}).project||'';
   form(`Start ${co}`,F.start(),{project:lastP,category:'Work'},v=>{
-    if(db.timer)stopTimer(true);
-    db.timer={company:co,project:v.project,category:v.category||'Work',start:nowStamp()};db.last.company=co;
-    save();closeForm();toast(`${co} timer started`)})
+    const now=nowStamp();live('hours').filter(r=>!r.end).forEach(r=>finish(r,now));
+    put('hours',{company:co,project:v.project,category:v.category||'Work',start:now,end:'',hrs:0,note:''});
+    closeForm();toast(`${co} timer started`)})
 }
-function stopTimer(silent){
-  const t=db.timer;if(!t)return;const end=nowStamp();const hrs=diffH(t.start,end);db.timer=null;
-  if(hrs>=1/60)put('hours',{company:t.company,project:t.project,category:t.category,start:t.start,end,hrs:+hrs.toFixed(3),note:''});
-  else{save();render()}
-  if(!silent)toast(`Logged ${fmtH(hrs)} to ${t.company}`)
+function finish(r,end){const hrs=diffH(r.start,end);
+  if(hrs<1/60)put('hours',{...r,deleted:true});else put('hours',{...r,end,hrs:+hrs.toFixed(3)});return hrs}
+function stopTimer(){
+  const t=T();if(!t)return;const hrs=finish(t,nowStamp());
+  toast(hrs<1/60?'Timer cancelled':`Logged ${fmtH(hrs)} to ${t.company}`)
 }
 function hoursForm(h){
   const v=h?{...h,date:h.start.slice(0,10),from:h.start.slice(11,16),to:h.end.slice(11,16)}
@@ -332,7 +388,7 @@ function tripText(t){
   return L.join('\n');
 }
 function exportHours(){
-  const ms=today().slice(0,7);const H=live('hours').filter(h=>h.start.startsWith(ms)).sort((a,b)=>a.start.localeCompare(b.start));
+  const ms=today().slice(0,7);const H=doneH().filter(h=>h.start.startsWith(ms)).sort((a,b)=>a.start.localeCompare(b.start));
   const q=s=>`"${String(s??'').replace(/"/g,'""')}"`;
   const rows=[['Date','Company','Project','Type','From','To','Hours','Note'],
     ...H.map(h=>[h.start.slice(0,10),h.company,h.project,h.category,h.start.slice(11,16),h.end.slice(11,16),(+h.hrs).toFixed(2),h.note])];
@@ -360,6 +416,8 @@ const ACT={
   taskFilter:a=>{db.taskFilter=a;save();render()},
   toggleDone:a=>{db[a]=!db[a];save();render()},
   exportHours:()=>exportHours(),
+  qd:n=>{const d=new Date();d.setDate(d.getDate()+(+n));$('#f_due').value=dstr(d);
+    document.querySelectorAll('.qd').forEach(c=>c.classList.toggle('on',c.dataset.arg===n))},
   pickContact:async()=>{try{const[c]=await navigator.contacts.select(['name','tel'],{multiple:false});if(!c)return;
     if(c.name&&c.name[0])$('#f_person').value=c.name[0];if(c.tel&&c.tel[0])$('#f_phone').value=c.tel[0];}catch(e){toast('Could not open contacts')}},
   closeForm:()=>closeForm(),
@@ -379,7 +437,7 @@ document.addEventListener('click',e=>{
 });
 
 /* ---------- views ---------- */
-const coTag=c=>`<span class="tag" style="--co:${CO_COLOR[c]||'#6b7280'}">${esc(c)}</span>`;
+const coTag=c=>`<span class="tag" style="--co:${CO_COLOR[c]||'#6b7280'};${c==='LPHC'?'color:#1f2937':''}">${esc(c)}</span>`;
 const sec=(t,body)=>`<div class="label">${t}</div><div class="card">${body}</div>`;
 const empty=m=>`<div class="empty">${m}</div>`;
 function dueTxt(d){if(!d)return'';const t=today();
@@ -413,29 +471,40 @@ function tripCard(t,compact){
 
 const VIEWS={
   home(){
-    const t=db.timer;let h='';
-    if(t)h+=`<div class="card timer" style="--co:${CO_COLOR[t.company]}"><div class="small">${esc(t.company)} · ${esc(t.category)} · since ${t.start.slice(11,16)}</div>
+    const t=T(),td=today(),trip=openTrip();
+    let timer='';
+    if(t)timer=`<div class="card timer" style="--co:${CO_COLOR[t.company]}"><div class="logochip">${logoImg(t.company)}</div><div class="small">${esc(t.category)} · since ${t.start.slice(11,16)}${t.start.slice(0,10)!==td?' ('+fmtDate(t.start)+')':''}</div>
       <div class="big">${esc(t.project||'No project')}</div><div class="elapsed" id="elapsed">${fmtH(diffH(t.start,new Date()))}</div>
       <button class="stop" data-act="stop">Stop</button></div>`;
-    h+=`<div class="card"><div class="label">${t?'Switch to':'Start working on'}</div><div class="cos">${COS.map(c=>
-      `<button class="co" style="--co:${CO_COLOR[c]}" data-act="start" data-arg="${c}">${c}</button>`).join('')}</div></div>`;
-    const trip=openTrip();
-    h+=`<div class="quick"><button data-act="newTask">＋ Task</button><button data-act="newFu">＋ Follow-up</button>
+    const cos=`<div class="card"><div class="label">${t?'Switch to':'Start working on'}</div><div class="cos">${COS.map(c=>
+      `<button class="co ${t&&t.company===c?'run':''}" style="--co:${CO_COLOR[c]}" data-act="start" data-arg="${c}" aria-label="${c}">${logoImg(c)}<span>${t&&t.company===c?'● Running':'Start ▸'}</span></button>`).join('')}</div></div>`;
+    const quick=`<div class="quick"><button data-act="newTask">＋ Task</button><button data-act="newFu">＋ Follow-up</button>
       ${trip?'<button data-act="newNote">＋ Payment note</button>':'<button data-act="newTrip">＋ Start trip</button>'}<button data-act="newHours">＋ Log hours</button></div>`;
-    if(trip)h+=`<div class="label">On trip</div>`+tripCard(trip,true);
-    const td=today();
-    const fus=live('followups').filter(f=>f.status!=='done'&&f.due&&f.due<=td).sort((a,b)=>a.due.localeCompare(b.due));
-    h+=sec(`Follow-ups due (${fus.length})`,fus.map(fuRow).join('')||empty('Nobody to chase today.'));
-    const tks=live('tasks').filter(x=>!x.done&&x.due&&x.due<=td).sort((a,b)=>a.due.localeCompare(b.due));
-    h+=sec(`Tasks due (${tks.length})`,tks.map(taskRow).join('')||empty('Nothing due today.'));
-    const H=live('hours').filter(x=>x.start.startsWith(td));
+    const tripH=trip?`<div class="label">On trip</div>`+tripCard(trip,true):'';
+    const H=doneH().filter(x=>x.start.startsWith(td));
     const run=t&&t.start.startsWith(td)?diffH(t.start,new Date()):0;
-    h+=sec('Today',`<div class="row"><div class="grow small">Logged today</div><b>${fmtH(sum(H)+run)}</b></div>
+    const todayH=sec('Today',`<div class="row"><div class="grow small">Logged today</div><b>${fmtH(sum(H)+run)}</b></div>
       ${COS.map(c=>{const v=sum(H.filter(x=>x.company===c))+(t&&t.company===c?run:0);return v?`<div class="row small"><span class="dot" style="--co:${CO_COLOR[c]}"></span><span class="grow">${c}</span>${fmtH(v)}</div>`:''}).join('')}`);
-    return h;
+    const byDue=(a,b)=>(a.due||'9999').localeCompare(b.due||'9999');
+    if(WIDE.matches){
+      const fus=live('followups').filter(f=>f.status!=='done').sort(byDue);
+      const tks=live('tasks').filter(x=>!x.done).sort((a,b)=>byDue(a,b)||(a.priority==='High'?-1:b.priority==='High'?1:0));
+      const lateF=fus.filter(f=>f.due&&f.due<=td).length,lateT=tks.filter(x=>x.due&&x.due<=td).length;
+      return `<div class="dash">
+        <div>${timer}${cos}${quick}${tripH}${todayH}</div>
+        <div><div class="row"><div class="label grow">Waiting on (${fus.length})${lateF?` · <span class="over">${lateF} due</span>`:''}</div><button class="primary" data-act="newFu">＋ Follow-up</button></div>
+          <div class="card">${fus.map(fuRow).join('')||empty('Nobody to chase.')}</div></div>
+        <div><div class="row"><div class="label grow">Open tasks (${tks.length})${lateT?` · <span class="over">${lateT} due</span>`:''}</div><button class="primary" data-act="newTask">＋ Task</button></div>
+          <div class="card">${tks.map(taskRow).join('')||empty('No open tasks.')}</div></div>
+      </div>`;
+    }
+    const fus=live('followups').filter(f=>f.status!=='done'&&f.due&&f.due<=td).sort(byDue);
+    const tks=live('tasks').filter(x=>!x.done&&x.due&&x.due<=td).sort(byDue);
+    return timer+cos+quick+tripH+sec(`Follow-ups due (${fus.length})`,fus.map(fuRow).join('')||empty('Nobody to chase today.'))
+      +sec(`Tasks due (${tks.length})`,tks.map(taskRow).join('')||empty('Nothing due today.'))+todayH;
   },
   hours(){
-    const H=live('hours'),ws=weekStart(),ms=today().slice(0,7);
+    const H=doneH(),ws=weekStart(),ms=today().slice(0,7);
     const w=c=>sum(H.filter(x=>x.company===c&&x.start.slice(0,10)>=ws)),m=c=>sum(H.filter(x=>x.company===c&&x.start.startsWith(ms)));
     const tr=sum(H.filter(x=>x.category==='Travel'&&x.start.startsWith(ms)));
     let h=`<div class="card"><table><tr><th></th><th>This week</th><th>${MO[+ms.slice(5)-1]}</th></tr>
@@ -492,7 +561,7 @@ const VIEWS={
       <div class="btnrow"><button class="primary" data-act="saveSettings">Save & sync</button><button data-act="syncNow">Sync now</button></div>
       <div class="small" style="margin-top:10px">${n} change${n===1?'':'s'} waiting · last synced ${s.lastSync?new Date(s.lastSync).toLocaleString('en-IN'):'never'}</div></div>
       <div class="card"><div class="label">Data</div><div class="btnrow"><button data-act="backup">Backup file</button><button data-act="resync">Re-send all to Sheet</button></div>
-      <div class="small" style="margin-top:8px">Everything is saved on this phone first and copied to your Sheet whenever you're online.</div></div>
+      <div class="small" style="margin-top:8px">Everything is saved on this device first and copied to your Sheet whenever you're online.</div></div>
       <div class="btnrow"><button data-act="go" data-arg="home">← Back</button></div>`;
   }
 };
@@ -501,9 +570,13 @@ function render(){
   const v=VIEWS[db.view]?db.view:'home';
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
   $('#title').textContent={home:'WorkLog',hours:'Hours',trips:'Trips',tasks:'Tasks',followups:'Follow-ups',settings:'Settings'}[v];
-  $('#main').innerHTML=VIEWS[v]();setStatus();
+  $('#main').innerHTML=VIEWS[v]();setStatus();applyAccent();coBar();
 }
-setInterval(()=>{const e=$('#elapsed');if(e&&db.timer)e.textContent=fmtH(diffH(db.timer.start,new Date()))},15000);
+setInterval(()=>{const t=T(),e=$('#elapsed');if(e&&t)e.textContent=fmtH(diffH(t.start,new Date()));coBar()},15000);
+setInterval(()=>{if(document.visibilityState==='visible'&&!syncing)sync(false)},60000);
+WIDE.addEventListener&&WIDE.addEventListener('change',()=>render());
+if(db.timer){const t=db.timer;delete db.timer;const r={id:uid(),company:t.company,project:t.project,category:t.category,start:t.start,end:'',hrs:0,note:'',updatedAt:Date.now()};
+  db.hours.push(r);db.queue['hours:'+r.id]={t:'hours',r};save()}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){render();sync(false)}});
 addEventListener('online',()=>sync(false));addEventListener('offline',()=>setStatus());
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
