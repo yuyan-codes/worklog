@@ -115,6 +115,11 @@ input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;displa
 .mini{padding:6px 11px;font-size:13px;font-weight:600;border-radius:9px}
 .age{font-weight:600}.age.old{color:var(--danger)}
 .grp{display:flex;align-items:baseline;gap:8px}
+.thread .msg{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0;background:var(--bg)}
+.thread .msg>summary{cursor:pointer;list-style:none}
+.thread .body{white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px;line-height:1.5;margin-top:8px}
+.thread .q .body{color:var(--mute);font-size:13px}
+@media (min-width:1000px){.sheet-body{max-width:760px}}
 .dash{display:grid;grid-template-columns:minmax(320px,1fr) minmax(0,1fr) minmax(0,1fr);gap:24px;align-items:start}
 .dash>div>.row{margin:12px 0 0}.dash>div>.row .label{margin:0}
 .dash .card{margin-top:10px}
@@ -293,6 +298,30 @@ function readForm(){
     out[f.k]=v}
   return out;
 }
+async function showReader(m){
+  if(!m)return;formState=null;
+  const acts=`<div class="btnrow"><button data-act="gmail" data-arg="${m.id}">Open in Gmail</button><button data-act="mailTask" data-arg="${m.id}">→ Task</button>
+    <button data-act="mailFu" data-arg="${m.id}">→ Follow-up</button><button class="primary" data-act="mailDone" data-arg="${m.id}">✓ Done</button></div>`;
+  const head=`<div class="sheet-head"><h2 style="font-size:18px">${esc(m.subject)}</h2><button class="ghost" data-act="closeForm">✕</button></div>
+    <div class="small" style="margin:4px 0 10px">${coTag(m.company)} ${esc(m.fromName)} · ${ageTxt(m.lastAt)}</div>`;
+  $('#sheetBody').innerHTML=head+`<div id="rd" class="empty">Opening mail…</div>`+acts;$('#sheet').classList.remove('hidden');
+  const rd=$('#rd');
+  if(!m.reader){rd.innerHTML=`<div class="snip" style="-webkit-line-clamp:unset">${esc(m.snippet)}</div><p class="small">The full mail view isn't switched on for this account yet. Use "Open in Gmail" for now.</p>`;return}
+  try{
+    const r=await fetch(m.reader,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token:db.settings.token||'',id:m.id.split(':').pop()})});
+    const j=await r.json();if(!j.ok)throw new Error(j.error||'Could not open');
+    if(!$('#rd'))return;
+    $('#rd').outerHTML=`<div class="thread">${j.messages.map((x,i)=>{
+      const body=String(x.body||'');const cut=body.search(/^\s*(On .{5,200}wrote:|-----Original Message-----|From: .+\nSent: )/m);
+      const main=cut>0?body.slice(0,cut):body,quoted=cut>0?body.slice(cut):'';
+      return `<details class="msg" ${i===j.messages.length-1?'open':''}><summary><b>${esc(x.from.replace(/<.*>/,'').replace(/"/g,'').trim()||x.from)}</b>
+        <span class="small">· ${new Date(x.date).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</span></summary>
+        <div class="small">To: ${esc(x.to)}${x.cc?' · Cc: '+esc(x.cc):''}</div>
+        <div class="body">${esc(main.trim())}</div>
+        ${quoted?`<details class="q"><summary class="small">Show quoted text</summary><div class="body">${esc(quoted)}</div></details>`:''}
+        ${x.attachments&&x.attachments.length?`<div class="small" style="margin-top:6px">📎 ${x.attachments.map(esc).join(' · ')}</div>`:''}</details>`}).join('')}</div>`;
+  }catch(e){if($('#rd'))$('#rd').innerHTML=`<p class="small">Couldn't load the full mail (${esc(e.message)}). Use "Open in Gmail".</p><div class="snip">${esc(m.snippet)}</div>`}
+}
 function closeForm(){$('#sheet').classList.add('hidden');formState=null;render()}
 
 /* ---------- field sets ---------- */
@@ -427,8 +456,9 @@ const ACT={
   taskFilter:a=>{db.taskFilter=a;save();render()},
   toggleDone:a=>{db[a]=!db[a];save();render()},
   exportHours:()=>exportHours(),
-  openMail:id=>{const m=byId('mail',id);if(m&&m.link)window.open(m.link,'_blank')},
-  mailDone:id=>{put('mail',{...byId('mail',id),status:'done'});toast('Cleared from inbox list')},
+  openMail:id=>showReader(byId('mail',id)),
+  gmail:id=>{const m=byId('mail',id);if(m&&m.link)window.open(m.link,'_blank')},
+  mailDone:id=>{put('mail',{...byId('mail',id),status:'done'});closeForm();toast('Cleared from inbox list')},
   mailTask:id=>{const m=byId('mail',id);taskForm(null,{title:`Reply to ${m.fromName.split(' ')[0]}: ${m.subject}`,company:m.company,
     notes:`From ${m.fromName} <${m.fromEmail}>\n${m.link}`},()=>put('mail',{...m,status:'done'}))},
   mailFu:id=>{const m=byId('mail',id);fuForm(null,{person:m.fromName,what:m.subject,company:m.company},()=>put('mail',{...m,status:'done'}))},
