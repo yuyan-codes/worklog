@@ -463,6 +463,10 @@ const ACT={
     notes:`From ${m.fromName} <${m.fromEmail}>\n${m.link}`},()=>put('mail',{...m,status:'done'}))},
   mailFu:id=>{const m=byId('mail',id);fuForm(null,{person:m.fromName,what:m.subject,company:m.company},()=>put('mail',{...m,status:'done'}))},
   mailFilter:a=>{db.mailFilter=a;save();render()},
+  reopenMail:id=>{put('mail',{...byId('mail',id),status:'open'});toast('Back in your inbox list')},
+  renameClient:k=>{const cur=clientName(k);const n=prompt(`Name for ${k}`,cur);if(n===null)return;const ex=aliasRec(k);
+    if(!n.trim()){if(ex)put('notes',{...ex,deleted:true});return}
+    put('notes',{...(ex||{}),kind:'client',payee:k,purpose:n.trim(),tripId:'',date:today()});toast(`${k} → ${n.trim()}`)},
   qd:n=>{const d=new Date();d.setDate(d.getDate()+(+n));$('#f_due').value=dstr(d);
     document.querySelectorAll('.qd').forEach(c=>c.classList.toggle('on',c.dataset.arg===n))},
   pickContact:async()=>{try{const[c]=await navigator.contacts.select(['name','tel'],{multiple:false});if(!c)return;
@@ -516,18 +520,50 @@ function tripCard(t,compact){
    ${!compact&&open?`<button class="primary" data-act="closeTrip" data-arg="${t.id}">Close trip</button>`:''}
    ${!compact&&!open?`<button data-act="reopenTrip" data-arg="${t.id}">Reopen</button>`:''}</div></div>`}
 
-const waitingMail=()=>live('mail').filter(m=>m.status==='open').sort((a,b)=>String(a.lastAt).localeCompare(String(b.lastAt)));
+const waitingMail=()=>live('mail').filter(m=>m.status==='open').sort((a,b)=>String(b.lastAt).localeCompare(String(a.lastAt)));
 function ageTxt(iso){const h=(Date.now()-new Date(iso))/36e5;const t=h<1?'just now':h<24?Math.floor(h)+'h':Math.floor(h/24)+'d';
   return `<span class="age ${h>48?'old':''}">${t}${h<1?'':' waiting'}</span>`}
 function mailRow(m,compact){return `<div class="mail"><div data-act="openMail" data-arg="${m.id}">
   <div class="t">${esc(m.fromName)} — ${esc(m.subject)}</div>
-  <div class="small">${coTag(m.company)} ${ageTxt(m.lastAt)}</div>${!compact&&m.snippet?`<div class="snip">${esc(m.snippet)}</div>`:''}</div>
+  <div class="small">${coTag(m.company)} <b>${esc(clientOf(m))}</b> · ${ageTxt(m.lastAt)}</div>${!compact&&m.snippet?`<div class="snip">${esc(m.snippet)}</div>`:''}</div>
   <div class="acts"><button class="mini" data-act="openMail" data-arg="${m.id}">Open</button><button class="mini" data-act="mailTask" data-arg="${m.id}">→ Task</button>
   <button class="mini" data-act="mailFu" data-arg="${m.id}">→ Follow-up</button><button class="mini" data-act="mailDone" data-arg="${m.id}">✓ Done</button></div></div>`}
 const PUBLIC=/^(gmail|googlemail|yahoo|outlook|hotmail|live|icloud|rediffmail|ymail|proton)\./i;
-const clientOf=m=>{const d=(m.fromEmail||'').split('@')[1]||'';return !d||PUBLIC.test(d)?(m.fromName||m.fromEmail):d};
+const domainOf=m=>((m.fromEmail||'').split('@')[1]||'').toLowerCase();
+const clientKey=m=>{const d=domainOf(m);return !d||PUBLIC.test(d)?'@'+(m.fromEmail||m.fromName||'').toLowerCase():d};
+const aliasRec=k=>live('notes').find(n=>n.kind==='client'&&n.payee===k);
+function autoName(k,m){
+  if(k[0]==='@')return (m&&m.fromName)||k.slice(1);
+  const p=k.split('.').filter(x=>!/^(mail|email|in|www|mx|smtp)$/.test(x));let i=p.length-2;
+  if(i>0&&/^(co|com|net|org|gov|ac|nic|res|edu)$/.test(p[i]))i--;
+  const w=p[Math.max(0,i)]||k;return w.charAt(0).toUpperCase()+w.slice(1)}
+const clientName=(k,m)=>{const a=aliasRec(k);return a&&a.purpose?a.purpose:autoName(k,m)};
+const clientOf=m=>clientName(clientKey(m),m);
 const mailCard=list=>`<div class="row"><div class="label grow">Mail waiting on you (${list.length})</div>${list.length>4?'<button class="mini" data-act="go" data-arg="inbox">All →</button>':''}</div>
   <div class="card">${list.slice(0,4).map(m=>mailRow(m,true)).join('')||empty(live('mail').length?'Inbox clear — nothing waiting on you.':'Mail not connected yet.')}</div>`;
+function mailListHtml(){
+  const f=db.mailFilter||'All',q=(db.mailQ||'').trim().toLowerCase(),sort=db.mailSort||'new';
+  const hit=m=>!q||[m.fromName,m.fromEmail,m.subject,m.snippet,clientOf(m)].some(x=>String(x||'').toLowerCase().includes(q));
+  const W=waitingMail().filter(m=>(f==='All'||m.company===f)&&hit(m));
+  const groups=[];W.forEach(m=>{const k=clientKey(m);let g=groups.find(x=>x.k===k);if(!g)groups.push(g={k,name:clientOf(m),list:[]});g.list.push(m)});
+  const newest=g=>String(g.list[0].lastAt),oldest=g=>String(g.list[g.list.length-1].lastAt);
+  groups.sort(sort==='old'?(a,b)=>oldest(a).localeCompare(oldest(b)):sort==='most'?(a,b)=>b.list.length-a.list.length||newest(b).localeCompare(newest(a))
+    :sort==='az'?(a,b)=>a.name.localeCompare(b.name):(a,b)=>newest(b).localeCompare(newest(a)));
+  if(sort==='old')groups.forEach(g=>g.list.reverse());
+  let h=groups.length?groups.map(g=>`<div class="row" style="margin:18px 2px 6px"><div class="label grow" style="margin:0">${esc(g.name)}
+      ${g.k[0]==='@'?'':`<span style="text-transform:none;font-weight:500"> · ${esc(g.k)}</span>`} (${g.list.length})</div>
+      ${g.k[0]==='@'?'':`<button class="mini ghost" data-act="renameClient" data-arg="${esc(g.k)}" title="Rename">✏️</button>`}</div>
+      <div class="card">${g.list.map(m=>mailRow(m)).join('')}</div>`).join('')
+    :sec('Waiting on you',empty(q?`Nothing waiting matches "${esc(q)}".`:'Nothing waiting on your reply. 🎉'));
+  const D=live('mail').filter(m=>m.status==='done'&&(f==='All'||m.company===f)&&hit(m)).sort((a,b)=>String(b.lastAt).localeCompare(String(a.lastAt)));
+  if(D.length)h+=`<div class="label" data-act="toggleDone" data-arg="showDoneMail" style="cursor:pointer">Marked done (${D.length}) ${db.showDoneMail?'▾':'▸'}</div>`+
+    (db.showDoneMail?`<div class="card">${D.slice(0,60).map(m=>`<div class="item"><div class="main"><div class="t">${esc(m.fromName)} — ${esc(m.subject)}</div>
+      <div class="small">${coTag(m.company)} <b>${esc(clientOf(m))}</b> · ${fmtDate(m.lastAt)}</div></div>
+      <button class="mini" data-act="reopenMail" data-arg="${m.id}">↺ Bring back</button></div>`).join('')}</div>`:'');
+  return h;
+}
+document.addEventListener('input',e=>{if(e.target.id==='mailQ'){db.mailQ=e.target.value;save();const l=$('#mailList');if(l)l.innerHTML=mailListHtml()}});
+document.addEventListener('change',e=>{if(e.target.id==='mailSort'){db.mailSort=e.target.value;save();const l=$('#mailList');if(l)l.innerHTML=mailListHtml()}});
 const VIEWS={
   home(){
     const t=T(),td=today(),trip=openTrip();
@@ -563,13 +599,14 @@ const VIEWS={
       +sec(`Tasks due (${tks.length})`,tks.map(taskRow).join('')||empty('Nothing due today.'))+todayH;
   },
   inbox(){
-    const f=db.mailFilter||'All',all=live('mail'),W=waitingMail().filter(m=>f==='All'||m.company===f);
-    let h=`<div class="row wrap gap" style="margin:6px 0">${['All',...COS].map(c=>{const n=waitingMail().filter(m=>c==='All'||m.company===c).length;
-      return `<span class="fchip ${f===c?'on':''}" data-act="mailFilter" data-arg="${c}">${c}${n?' · '+n:''}</span>`}).join('')}</div>`;
-    if(!all.length)return h+sec('Mail',empty('No mail has come in yet. Once the mail scanner runs in each company account, anything waiting on your reply shows up here within 15 minutes.'));
-    if(!W.length)return h+sec('Waiting on you',empty('Nothing waiting on your reply. 🎉'));
-    const groups=[];W.forEach(m=>{const k=clientOf(m);let g=groups.find(x=>x.k===k);if(!g)groups.push(g={k,list:[]});g.list.push(m)});
-    return h+groups.map(g=>`<div class="label">${esc(g.k)} (${g.list.length})</div><div class="card">${g.list.map(m=>mailRow(m)).join('')}</div>`).join('');
+    const f=db.mailFilter||'All',all=live('mail');
+    if(!all.length)return sec('Mail',empty('No mail has come in yet. Once the mail scanner runs in each company account, anything waiting on your reply shows up here within 15 minutes.'));
+    const sorts=[['new','Newest'],['old','Oldest'],['most','Most waiting'],['az','A–Z']];
+    return `<div class="row wrap gap" style="margin:6px 0">${['All',...COS].map(c=>{const n=waitingMail().filter(m=>c==='All'||m.company===c).length;
+        return `<span class="fchip ${f===c?'on':''}" data-act="mailFilter" data-arg="${c}">${c}${n?' · '+n:''}</span>`}).join('')}</div>
+      <div class="row gap" style="margin:8px 0 4px"><input id="mailQ" type="search" placeholder="Search client, person or subject" value="${esc(db.mailQ||'')}" autocomplete="off" style="flex:1;min-width:0">
+        <select id="mailSort" style="width:auto">${sorts.map(([k,l])=>`<option value="${k}" ${(db.mailSort||'new')===k?'selected':''}>${l}</option>`).join('')}</select></div>
+      <div id="mailList">${mailListHtml()}</div>`;
   },
   hours(){
     const H=doneH(),ws=weekStart(),ms=today().slice(0,7);
@@ -638,7 +675,9 @@ function render(){
   const v=VIEWS[db.view]?db.view:'home';
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
   $('#title').textContent={inbox:'Inbox',home:'WorkLog',hours:'Hours',trips:'Trips',tasks:'Tasks',followups:'Follow-ups',settings:'Settings'}[v];
-  $('#main').innerHTML=VIEWS[v]();setStatus();applyAccent();coBar();
+  const fq=document.activeElement&&document.activeElement.id==='mailQ'?document.activeElement.selectionStart:null;
+  $('#main').innerHTML=VIEWS[v]();
+  if(fq!==null&&$('#mailQ')){const q=$('#mailQ');q.focus();q.setSelectionRange(fq,fq)}setStatus();applyAccent();coBar();
   const n=waitingMail().length,bd=$('#mailBadge');bd.textContent=n;bd.classList.toggle('on',n>0);
 }
 setInterval(()=>{const t=T(),e=$('#elapsed');if(e&&t)e.textContent=fmtH(diffH(t.start,new Date()));coBar()},15000);
