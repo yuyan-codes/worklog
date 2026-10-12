@@ -145,6 +145,22 @@ input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;displa
   #toast{bottom:30px}
   .item .main,.tick,.wa,.fchip,.co,[data-act]{cursor:pointer}
 }
+.dtrow{display:flex;gap:8px}
+.dtrow .dtx{flex:1;min-width:0}
+.dtx.bad{border-color:var(--danger);box-shadow:0 0 0 2px color-mix(in srgb,var(--danger) 25%,transparent)}
+.calb{position:relative;flex:none;width:50px;display:flex;align-items:center;justify-content:center;font-size:20px;border-radius:12px;background:var(--chip);cursor:pointer;overflow:hidden}
+.calb input{position:absolute;inset:0;opacity:0;width:100%;height:100%;min-height:0;padding:0;border:0;cursor:pointer}
+.dchips{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+.dchip{padding:6px 11px;border-radius:999px;background:var(--chip);font-weight:600;font-size:13px;cursor:pointer;user-select:none;-webkit-user-select:none}
+.dchip.on{background:var(--ink);color:var(--bg)}
+input.amt{font-size:28px;font-weight:700;padding:10px 12px;font-variant-numeric:tabular-nums}
+.ecat{font-size:20px;width:28px;text-align:center;flex:none}
+.eamt{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mnav{display:flex;align-items:center;gap:6px;margin:6px 0}
+.mnav b{font-size:17px;min-width:92px;text-align:center}
+.catl{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.catl span{background:var(--chip);border-radius:9px;padding:4px 9px;font-size:13px;font-weight:600}
+.banner{background:color-mix(in srgb,var(--warn) 14%,var(--card));border:1px solid color-mix(in srgb,var(--warn) 40%,var(--line));border-radius:12px;padding:10px 12px;font-size:14px;margin:10px 0}
 .btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .btnrow button{flex:1;min-width:120px}
 </style>
@@ -157,12 +173,13 @@ input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;displa
   <button data-act="go" data-arg="home" data-v="home"><i>◉</i>Home</button>
   <button data-act="go" data-arg="inbox" data-v="inbox"><i>✉︎</i>Inbox<span class="badge" id="mailBadge"></span></button>
   <button data-act="go" data-arg="hours" data-v="hours"><i>◷</i>Hours</button>
-  <button data-act="go" data-arg="trips" data-v="trips"><i>✈︎</i>Trips</button>
+  <button data-act="go" data-arg="money" data-v="money"><i>₹</i>Expenses</button>
   <button data-act="go" data-arg="tasks" data-v="tasks"><i>☑︎</i>Tasks</button>
   <button data-act="go" data-arg="followups" data-v="followups"><i>↻</i>Follow-ups</button>
 </nav>
 <div id="sheet" class="sheet hidden"><div class="sheet-body" id="sheetBody"></div></div>
 <div id="toast"></div>
+<input type="file" id="impFile" accept=".csv,text/csv,text/plain" style="display:none">
 
 <script>
 /* ---------- data ---------- */
@@ -182,14 +199,15 @@ const LOGOS={"RFME": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAACOCAYA
 const logo=c=>LOGOS[c];
 const logoImg=c=>`<img src="${logo(c)}" alt="${c}" class="${c==='PFTD'?'inv':''}">`;
 const CATS=['Work','Meeting','Site visit','Travel'];
-const TYPES=['hours','trips','notes','tasks','followups','mail'];
+const TYPES=['hours','trips','notes','tasks','followups','mail','expenses'];
 const BOOL=['deleted','done','personal','billsSubmitted'];
-const NUM=['updatedAt','hrs','advance'];
+const NUM=['updatedAt','hrs','advance','amount'];
+const EXP_CATS=[['Food','🥘'],['Conveyance','🚕'],['Travel','✈️'],['Stay','🏨'],['Fuel','⛽'],['Logistics','🚚'],['Purchase','🧰'],['Recharge','📱'],['Groceries','🛒'],['Money Transfer','💵'],['Other','📦']];
 const KEY='worklog.v1';
 let db;
 try{db=JSON.parse(localStorage.getItem(KEY))||{}}catch(e){db={}}
 TYPES.forEach(t=>db[t]=db[t]||[]);
-db.queue=db.queue||{};db.settings=db.settings||{};db.last=db.last||{};db.view=db.view||'home';
+db.queue=db.queue||{};db.settings=db.settings||{};db.last=db.last||{};db.view=db.view||'home';if(db.view==='trips')db.view='money';
 db.taskFilter=db.taskFilter||'All';
 function save(){try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){toast('Phone storage full')}}
 
@@ -212,9 +230,82 @@ const DAY=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 function fmtDate(s,withDay){if(!s)return'';const[y,m,d]=s.slice(0,10).split('-').map(Number);
   const w=withDay?DAY[new Date(y,m-1,d).getDay()]+', ':'';return `${w}${d} ${MO[m-1]}`}
 function fmtH(h){const m=Math.max(0,Math.round(h*60));return `${Math.floor(m/60)}h ${pad(m%60)}m`}
+/* ---- date & time entry: stored as YYYY-MM-DD and HH:MM, shown as "Mon, 12 Oct 2026" and "1:45 pm" ---- */
+function fmtLong(s){if(!s)return'';const[y,m,d]=s.slice(0,10).split('-').map(Number);if(!d)return s;return `${DAY[new Date(y,m-1,d).getDay()]}, ${d} ${MO[m-1]} ${y}`}
+function fmtTime(s){if(!s)return'';const[h,m]=String(s).split(':').map(Number);if(isNaN(h))return s;return `${h%12||12}:${pad(m||0)} ${h<12?'am':'pm'}`}
+const addDays=(s,n)=>{const[y,m,d]=s.split('-').map(Number);return dstr(new Date(y,m-1,d+n))};
+const mkDate=(y,m,d)=>{const x=new Date(y,m-1,d);return x.getFullYear()===y&&x.getMonth()===m-1&&x.getDate()===d?dstr(x):''};
+function nextWd(i,dir){const t=new Date().getDay();let k=(i-t+7)%7;if(dir==='past')k=k?k-7:0;else if(k===0)k=7;return addDays(today(),k)}
+function parseDate(raw,dir){
+  let s=String(raw||'').trim().toLowerCase().replace(/(\d)(st|nd|rd|th)\b/g,'$1').replace(/\s+/g,' ');if(!s)return'';
+  const td=today(),off=n=>addDays(td,n),Y=new Date().getFullYear();let m;
+  if(/^(today|tod|td|t|now)$/.test(s))return off(0);
+  if(/^(yesterday|yest|yday|y)$/.test(s))return off(-1);
+  if(/^(tomorrow|tmrw?|tom|tm)$/.test(s))return off(1);
+  if(m=s.match(/^([+-])\s*(\d{1,3})\s*d?$/))return off((m[1]==='-'?-1:1)*+m[2]);
+  if(m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))return mkDate(+m[1],+m[2],+m[3]);
+  s=s.replace(/^(sun|mon|tue|wed|thu|fri|sat)[a-z]*,?\s*(?=\d)/,'');
+  if(m=s.match(/^(sun|mon|tue|wed|thu|fri|sat)[a-z]*$/))return nextWd(DAY.findIndex(x=>x.toLowerCase()===m[1]),dir);
+  const mi=w=>MO.findIndex(x=>w.startsWith(x.toLowerCase()))+1;let d,mo,y,bare=false;
+  if(m=s.match(/^(\d{1,2})[\s\-\/.]*([a-z]{3,})\.?[\s\-\/.,]*(\d{2,4})?$/)){d=+m[1];mo=mi(m[2]);y=m[3]}
+  else if(m=s.match(/^([a-z]{3,})\.?[\s\-\/.]*(\d{1,2})[\s,]*(\d{4})?$/)){mo=mi(m[1]);d=+m[2];y=m[3]}
+  else if(m=s.match(/^(\d{1,2})[\/\-. ](\d{1,2})(?:[\/\-. ](\d{2,4}))?$/)){d=+m[1];mo=+m[2];y=m[3]}
+  else if(m=s.match(/^(\d{2})(\d{2})(\d{2}|\d{4})?$/)){d=+m[1];mo=+m[2];y=m[3]}
+  else if(m=s.match(/^(\d{1,2})$/)){d=+m[1];mo=new Date().getMonth()+1;bare=true}
+  else return'';
+  if(!mo||mo>12)return'';
+  if(y){y=+y;if(y<100)y+=2000;return mkDate(y,mo,d)}
+  let r=mkDate(Y,mo,d);if(!r&&!bare)return'';
+  if(bare){if(!r||(dir==='past'&&r>td)){const x=new Date(Y,mo-2,d);r=x.getDate()===d?dstr(x):''}
+    else if(dir==='future'&&r<td){const x=new Date(Y,mo,d);r=x.getDate()===d?dstr(x):''}return r}
+  if(dir==='past'&&r>off(1))r=mkDate(Y-1,mo,d);
+  if(dir==='future'&&r<off(-14))r=mkDate(Y+1,mo,d);
+  return r}
+function parseTime(raw){
+  const s=String(raw||'').trim().toLowerCase().replace(/\s+/g,'').replace(/\.(?=m)/g,'').replace(/(a|p)\.?m?\.?$/,'$1m');if(!s)return'';
+  if(s==='now')return nowTime();if(s==='noon')return'12:00';if(s==='midnight')return'00:00';
+  const m=s.match(/^(\d{1,2})(?:[:.h](\d{2}))?(?::\d{2})?(am|pm)?$/)||s.match(/^(\d{1,2})(\d{2})(am|pm)?$/);if(!m)return'';
+  let h=+m[1];const mi=+(m[2]||0),ap=m[3];
+  if(ap){if(h<1||h>12)return'';if(ap==='pm'&&h<12)h+=12;if(ap==='am'&&h===12)h=0}
+  if(h>23||mi>59)return'';return `${pad(h)}:${pad(mi)}`}
+function dateChips(f){const lbl=n=>{const d=new Date();d.setDate(d.getDate()+n);return `${DAY[d.getDay()]} ${d.getDate()}`};
+  const L=f.dir==='future'?[['Today','0'],['Tomorrow','1'],['In 3 days','3'],['Next Mon','mon'],['In 2 weeks','14']]
+    :f.dir==='any'?[['Yesterday','-1'],['Today','0'],['Tomorrow','1']]:[['Today','0'],['Yesterday','-1'],[lbl(-2),'-2'],[lbl(-3),'-3']];
+  return f.opt?[...L,['No date','x']]:L}
+const timeChips=f=>[...(f.chips||[['Now','now'],['−15m','-15'],['−30m','-30'],['−1h','-60']]),...(f.opt?[['Clear','x']]:[])];
+function chipValue(tok,isT){if(tok==='x')return'';
+  if(isT){if(tok[0]==='@')return tok.slice(1);const d=new Date();if(tok!=='now')d.setMinutes(d.getMinutes()+(+tok));return `${pad(d.getHours())}:${pad(d.getMinutes())}`}
+  return tok==='mon'?nextWd(1,'future'):addDays(today(),+tok)}
+function setDt(inp,v){const isT=inp.dataset.dt==='time';inp.value=v?(isT?fmtTime(v):fmtLong(v)):'';inp.classList.remove('bad');
+  const p=inp.parentNode.querySelector('input[data-for]');if(p)p.value=v||'';
+  inp.closest('.f').querySelectorAll('.dchip').forEach(c=>c.classList.toggle('on',!!v&&chipValue(c.dataset.arg.split('|')[1],isT)===v))}
+function readDt(inp){const raw=inp.value.trim();if(!raw)return'';return inp.dataset.dt==='time'?parseTime(raw):parseDate(raw,inp.dataset.dir)}
+function dtField(f,v){const id='f_'+f.k,isT=f.type==='time';
+  const chips=(isT?timeChips(f):dateChips(f)).map(([l,tok])=>`<span class="dchip ${v&&chipValue(tok,isT)===v?'on':''}" data-act="dt" data-arg="${f.k}|${tok}">${l}</span>`).join('');
+  return `<div class="f"><label for="${id}">${esc(f.label)}</label><div class="dtrow">
+    <input id="${id}" class="dtx" data-dt="${isT?'time':'date'}" data-dir="${f.dir||'past'}" type="text" value="${esc(v?(isT?fmtTime(v):fmtLong(v)):'')}"
+      placeholder="${isT?'Type 930, 2:15 pm, 1745':'Type 12/10, 12 Oct, yest, mon'}" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">
+    <label class="calb" title="${isT?'Pick a time':'Open calendar'}">${isT?'🕘':'📅'}<input type="${isT?'time':'date'}" tabindex="-1" data-for="${id}" value="${esc(v||'')}" aria-label="${isT?'Pick a time':'Open calendar'}"></label></div>
+    <div class="dchips">${chips}</div></div>`}
+document.addEventListener('change',e=>{const t=e.target;
+  if(t.dataset&&t.dataset.for){const inp=$('#'+t.dataset.for);if(inp)setDt(inp,t.value);return}
+  if(t.classList&&t.classList.contains('dtx')){const v=readDt(t);if(v||!t.value.trim())setDt(t,v);else{t.classList.add('bad');toast(t.dataset.dt==='time'?'Couldn’t read that time — try 930, 2:15 pm or 1745':'Couldn’t read that date — try 12/10, 12 Oct or yest')}}});
+document.addEventListener('input',e=>{const t=e.target;if(t.classList&&t.classList.contains('dtx')){t.classList.remove('bad');t.closest('.f').querySelectorAll('.dchip.on').forEach(c=>c.classList.remove('on'))}});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.classList&&e.target.classList.contains('dtx')){e.preventDefault();e.target.blur()}});
+document.addEventListener('click',e=>{const t=e.target;if(t.dataset&&t.dataset.for&&t.showPicker&&!isMobile()){try{t.showPicker()}catch(_){}}});
+/* ---- money ---- */
+const parseAmt=s=>{const n=parseFloat(String(s??'').replace(/[^\d.]/g,''));return isFinite(n)?Math.round(n*100)/100:0};
+const catEmoji=c=>(EXP_CATS.find(x=>x[0]===c)||[0,'🧾'])[1];
+const catLabel=c=>c?`${catEmoji(c)} ${c}`:'';
+function cleanCat(s){const t=String(s||'').replace(/[^\p{L}\p{N} &\/-]/gu,'').trim();if(!t)return'';const l=t.toLowerCase();
+  const hit=EXP_CATS.find(x=>x[0].toLowerCase()===l);if(hit)return hit[0];
+  const syn=[[/taxi|cab|auto|rapido|uber|ola|conveyance|local/,'Conveyance'],[/hotel|stay|lodg|room/,'Stay'],[/flight|train|bus|travel|air/,'Travel'],
+    [/food|meal|lunch|dinner|break|tea|snack|restaurant/,'Food'],[/petrol|diesel|fuel/,'Fuel'],[/porter|courier|freight|transport|logistic/,'Logistics'],
+    [/grocer/,'Groceries'],[/transfer/,'Money Transfer'],[/recharge|mobile|data/,'Recharge'],[/purchase|material|parts|hardware/,'Purchase']];
+  const s2=syn.find(([r])=>r.test(l));return s2?s2[1]:t.charAt(0).toUpperCase()+t.slice(1)}
 const diffH=(a,b)=>(new Date(b)-new Date(a))/3600000;
 const sum=L=>L.reduce((a,x)=>a+(+x.hrs||0),0);
-const rupee=n=>'₹ '+Number(n||0).toLocaleString('en-IN');
+const rupee=n=>{n=Number(n||0);const f=Math.round(n*100)%100?2:0;return '₹ '+n.toLocaleString('en-IN',{minimumFractionDigits:f,maximumFractionDigits:f})};
 function weekStart(){const d=new Date();d.setDate(d.getDate()-((d.getDay()+6)%7));return dstr(d)}
 const uniq=a=>[...new Set(a.filter(Boolean))].sort((x,y)=>x.localeCompare(y));
 const projects=()=>uniq([...workH(),...live('tasks'),...live('followups')].map(x=>x.project));
@@ -242,7 +333,8 @@ async function sync(manual){
     const res=await fetch(s.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
       body:JSON.stringify({token:s.token||'',changes})});
     const j=await res.json();if(!j.ok)throw new Error(j.error||'Sheet refused');
-    keys.forEach(k=>{if(db.queue[k]&&db.queue[k].r.updatedAt===sentAt[k])delete db.queue[k]});
+    keys.forEach(k=>{const q=db.queue[k];if(q&&q.r.updatedAt===sentAt[k]&&j.data[q.t]!==undefined)delete db.queue[k]});
+    s.noExpTab=j.data.expenses===undefined;
     TYPES.forEach(t=>(j.data[t]||[]).forEach(sr=>{sr=norm(t,sr);const L=db[t];const i=L.findIndex(x=>x.id===sr.id);
       if(i<0)L.push(sr);else if((sr.updatedAt||0)>(L[i].updatedAt||0)&&!db.queue[t+':'+sr.id])L[i]=sr}));
     s.lastSync=Date.now();save();if(!$('#sheet').classList.contains('hidden'))setStatus();else render();
@@ -264,14 +356,13 @@ function setStatus(txt){
 let formState=null;
 function field(f,v){
   const id='f_'+f.k;
+  if(f.type==='date'||f.type==='time')return dtField(f,v);
+  if(f.type==='quickdate')return dtField({...f,type:'date',dir:'future',opt:true},v);
+  if(f.type==='amount')return `<div class="f"><label for="${id}">${esc(f.label)}</label><input id="${id}" class="amt" type="text" inputmode="decimal" value="${v?esc(v):''}" placeholder="₹ 0" autocomplete="off"></div>`;
   if(f.type==='company'||f.type==='choice'){
-    const opts=f.type==='company'?COS:f.options;
+    let opts=f.type==='company'?COS:f.options;if(v&&!opts.includes(v))opts=[...opts,v];const show=f.show||(o=>o);
     return `<div class="f"><label>${esc(f.label)}</label><div class="chips">${opts.map(o=>
-      `<label class="chip"><input type="radio" name="${id}" value="${esc(o)}" ${v===o?'checked':''}><span>${esc(o)}</span></label>`).join('')}</div></div>`}
-  if(f.type==='quickdate'){const q=[['Today',0],['Tomorrow',1],['In 3 days',3],['Next week',7]];
-    return `<div class="f"><label>${esc(f.label)}</label><div class="chips">${q.map(([l,n])=>
-      `<span class="fchip qd" data-act="qd" data-arg="${n}">${l}</span>`).join('')}</div>
-      <input id="${id}" type="date" value="${esc(v)}" style="margin-top:8px"></div>`}
+      `<label class="chip"><input type="radio" name="${id}" value="${esc(o)}" ${v===o?'checked':''}><span>${esc(show(o))}</span></label>`).join('')}</div></div>`}
   if(f.type==='who'){const inp=field({...f,type:'text'},v);return inp.replace(/^<div class="f"><label for="[^"]*">[^<]*<\/label>/,
     `<div class="f"><label for="${id}">${esc(f.label)}</label><div class="chips" id="whoChips" style="margin-bottom:8px"></div>`)}
   if(f.type==='check')return `<div class="f"><label class="check"><input type="checkbox" id="${id}" ${v?'checked':''}>${esc(f.label)}</label></div>`;
@@ -296,7 +387,7 @@ function form(title,fields,vals,onSave,onDelete){
   $('#sheet').classList.remove('hidden');refreshWho();
   const p=$('#f_person');if(p)p.addEventListener('change',()=>{const ph=$('#f_phone');if(ph&&!ph.value){
     const c=findContact(p.value);const hit=c?{phone:c.phone}:[...live('followups')].reverse().find(x=>x.person===p.value&&x.phone);if(hit)ph.value=hit.phone}});
-  const first=$('#sheetBody input[type=text],#sheetBody textarea');if(first&&!first.value&&!/iPhone|iPad/.test(navigator.userAgent))first.focus();
+  const first=$('#sheetBody input[type=text]:not(.dtx),#sheetBody textarea');if(first&&!first.value&&!/iPhone|iPad/.test(navigator.userAgent))first.focus();
 }
 function readForm(){
   const out={};
@@ -304,6 +395,9 @@ function readForm(){
     if(f.type==='company'||f.type==='choice'){const c=document.querySelector(`input[name="${id}"]:checked`);v=c?c.value:''}
     else if(f.type==='check')v=$('#'+id).checked;
     else if(f.type==='number')v=parseFloat($('#'+id).value)||0;
+    else if(f.type==='amount')v=parseAmt($('#'+id).value);
+    else if(f.type==='date'||f.type==='time'||f.type==='quickdate'){const el=$('#'+id),raw=el.value.trim();v=readDt(el);
+      if(raw&&!v){el.classList.add('bad');toast(`Couldn\u2019t read ${f.label.toLowerCase()} “${raw}”`);return null}}
     else v=$('#'+id).value.trim();
     if(f.req&&!v){toast(`${f.label} is needed`);return null}
     out[f.k]=v}
@@ -340,25 +434,35 @@ const defCo=()=>db.last.company||'RFME';
 const F={
   start:()=>[{k:'project',label:'Project',list:projects(),ph:'e.g. MRSAM GPS antenna'},{k:'category',label:'Type',type:'choice',options:CATS}],
   hours:()=>[{k:'company',label:'Company',type:'company'},{k:'project',label:'Project',list:projects()},
-    {k:'category',label:'Type',type:'choice',options:CATS},{k:'date',label:'Date',type:'date'},
+    {k:'category',label:'Type',type:'choice',options:CATS},{k:'date',label:'Date',type:'date',dir:'past'},
     {k:'from',label:'From',type:'time',pair:true},{k:'to',label:'To',type:'time'},{k:'note',label:'Note',type:'textarea'}],
   task:edit=>[{k:'title',label:'Task',req:true,ph:'What needs doing'},{k:'company',label:'Company',type:'company'},
-    {k:'project',label:'Project',list:projects()},{k:'due',label:'Due',type:'date'},
+    {k:'project',label:'Project',list:projects()},{k:'due',label:'Due',type:'date',dir:'future',opt:true},
     {k:'priority',label:'Priority',type:'choice',options:['Normal','High']},{k:'notes',label:'Notes',type:'textarea'},
     ...(edit?[{k:'done',label:'Done',type:'check'}]:[])],
   fu:edit=>[{k:'company',label:'Company',type:'company'},{k:'person',label:'Who',req:true,type:'who',list:persons(),ac:'name',pick:true},
     {k:'what',label:'What you need from them',req:true,ph:'e.g. VSWR report for BBBS PA module'},
-    {k:'due',label:'By when',type:'quickdate'},
+    {k:'due',label:'By when',type:'date',dir:'future',opt:true},
     ...(edit?[{k:'done',label:'Received — close it',type:'check'}]:[]),
     {k:'phone',label:'WhatsApp number',type:'tel',ph:'Filled when you tap a name',ac:'tel',more:true},
     {k:'project',label:'Project',list:projects(),more:true},
     {k:'notes',label:'Notes',type:'textarea',more:true}],
   trip:()=>[{k:'company',label:'Company',type:'company'},{k:'purpose',label:'Purpose',req:true,ph:'e.g. SRS exhibition – Histolog'},
-    {k:'city',label:'City'},{k:'startDate',label:'From',type:'date',pair:true},{k:'endDate',label:'To',type:'date'},
+    {k:'city',label:'City'},{k:'startDate',label:'From',type:'date',dir:'any'},{k:'endDate',label:'To',type:'date',dir:'any',opt:true},
     {k:'advance',label:'Advance received (₹)',type:'number'},{k:'billsSubmitted',label:'Food bills handed to accounts',type:'check'}],
   note:()=>[{k:'payee',label:'Paid to',req:true,ph:'Name as it shows in UPI'},{k:'purpose',label:'What for',ph:'e.g. forklift hire for Histolog'},
-    {k:'date',label:'Date',type:'date',pair:true},{k:'time',label:'Time',type:'time'},{k:'personal',label:'Personal — not for claim',type:'check'}],
-  pday:()=>[{k:'date',label:'Date',type:'date'},{k:'purpose',label:'Reason',ph:'e.g. off day, showing colleague around'}]
+    {k:'date',label:'Date',type:'date',dir:'past'},{k:'time',label:'Time',type:'time',opt:true},{k:'personal',label:'Personal — not for claim',type:'check'}],
+  expense:trip=>[{k:'amount',label:'Amount (₹)',type:'amount',req:true},
+    {k:'category',label:'Category',type:'choice',options:EXP_CATS.map(c=>c[0]),show:catLabel},
+    {k:'payee',label:'Paid to',list:payees(),ph:'As it shows in UPI — Rapido, Hotel Surya…'},
+    {k:'note',label:'What for',ph:'e.g. lunch with Histolog team'},
+    {k:'date',label:'Date',type:'date',dir:'past'},{k:'time',label:'Time',type:'time'},
+    {k:'company',label:'Company',type:'company'},
+    ...(trip?[{k:'onTrip',label:`Part of trip — ${trip.purpose}`,type:'check'}]:[]),
+    {k:'personal',label:'Personal — not for claim',type:'check'},
+    {k:'mode',label:'Paid by',type:'choice',options:['UPI','Card','Cash'],more:true},
+    {k:'ref',label:'UPI ref / UTR',ph:'Optional — helps match the bank statement',more:true}],
+  pday:()=>[{k:'date',label:'Date',type:'date',dir:'any'},{k:'purpose',label:'Reason',ph:'e.g. off day, showing colleague around'}]
 };
 
 /* ---------- actions ---------- */
@@ -424,6 +528,25 @@ function pdayForm(n,tripId){
     put('notes',{...(n||{}),...x,kind:'personalday',personal:true,tripId:n?n.tripId:tripId});closeForm()
   },n?()=>{if(del('notes',n))closeForm()}:null)
 }
+const payees=()=>uniq(live('expenses').map(e=>e.payee));
+const curCo=()=>{const t=T();if(t)return t.company;const p=P();if(p&&facOf(p.company).co)return facOf(p.company).co;return defCo()};
+function expenseForm(x,pre){
+  const trip=x?(x.tripId?byId('trips',x.tripId):null):openTrip();
+  const v=x?{...x,onTrip:!!x.tripId}:{date:today(),time:nowTime(),company:trip&&!T()?trip.company:curCo(),mode:'UPI',onTrip:!!trip,...(pre||{})};
+  if(!x&&trip&&v.date<trip.startDate)v.onTrip=false;
+  form(x?'Edit expense':'Add expense',F.expense(trip),v,y=>{
+    const {onTrip,...r}=y,next=formState&&formState.next;
+    put('expenses',{...(x||{}),...r,company:r.company||curCo(),mode:r.mode||'UPI',tripId:onTrip&&trip?trip.id:'',source:x?(x.source||'app'):((pre&&pre.source)||'app')});
+    closeForm();toast(`${rupee(r.amount)}${r.payee?' · '+r.payee:''} saved`);
+    if(next)expenseForm(null,{date:r.date,company:r.company,mode:r.mode});
+  },x?()=>{if(del('expenses',x))closeForm()}:null);
+  if(!x){const row=$('#sheetBody .btnrow');if(row)row.insertAdjacentHTML('beforeend','<button data-act="saveNext">Save & add another</button>')}
+  const py=$('#f_payee');if(py)py.addEventListener('change',()=>{const n=py.value.trim().toLowerCase();if(!n)return;
+    const last=live('expenses').filter(e=>String(e.payee).toLowerCase()===n).sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time))[0];if(!last)return;
+    if(last.category&&!document.querySelector('input[name="f_category"]:checked')){const c=document.querySelector(`input[name="f_category"][value="${CSS.escape(last.category)}"]`);if(c)c.checked=true}
+    const nt=$('#f_note');if(nt&&!nt.value&&last.note)nt.placeholder='Last time: '+last.note});
+  const a=$('#f_amount');if(a&&!x&&!v.amount)a.focus();
+}
 function waNudge(f){
   const ph=f.phone||(findContact(f.person)||{}).phone||'';
   put('followups',{...f,phone:ph,lastNudged:nowStamp()});openWA(ph,msgNudge(f));
@@ -447,6 +570,12 @@ function tripText(t){
   const off=pay.filter(n=>!n.personal),per=pay.filter(n=>n.personal);
   L.push('','Payment notes (official):',...(off.length?off.map(n=>`- ${fmtDate(n.date)} ${n.time||''} — ${n.payee}${n.purpose?' — '+n.purpose:''}`):['- none']));
   if(per.length)L.push('','Personal payments (exclude):',...per.map(n=>`- ${fmtDate(n.date)} ${n.time||''} — ${n.payee}${n.purpose?' — '+n.purpose:''}`));
+  const E=live('expenses').filter(e=>e.tripId===t.id).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+  const eo=E.filter(e=>!e.personal),ep=E.filter(e=>e.personal),eline=e=>`- ${fmtDate(e.date)} ${e.time||''} — ${e.category||'Other'} — ${e.payee||''}${e.note?' — '+e.note:''} — ${rupee(e.amount)}${e.mode&&e.mode!=='UPI'?' ('+e.mode+')':''}${e.ref?' · ref '+e.ref:''}`;
+  if(E.length){L.push('',`Expenses logged (official) — total ${rupee(eTot(eo))}:`,...(eo.length?eo.map(eline):['- none']));
+    const bc=uniq(eo.map(e=>e.category||'Other'));if(bc.length)L.push('By category: '+bc.map(c=>`${c} ${rupee(eTot(eo.filter(e=>(e.category||'Other')===c)))}`).join(' · '));
+    if(ep.length)L.push('','Personal expenses (exclude):',...ep.map(eline));
+    L.push('',`Advance ${rupee(t.advance)} − official spend ${rupee(eTot(eo))} = ${rupee(Math.abs((+t.advance||0)-eTot(eo)))} ${(+t.advance||0)>=eTot(eo)?'to return':'to claim'}`)}
   return L.join('\n');
 }
 function exportHours(){
@@ -455,6 +584,64 @@ function exportHours(){
   const rows=[['Date','Company','Project','Type','From','To','Hours','Note'],
     ...H.map(h=>[h.start.slice(0,10),h.company,h.project,h.category,h.start.slice(11,16),h.end.slice(11,16),(+h.hrs).toFixed(2),h.note])];
   shareFile(`Hours ${MO[+ms.slice(5)-1]} ${ms.slice(0,4)}.csv`,rows.map(r=>r.map(q).join(',')).join('\n'),'text/csv');
+}
+const eTot=L=>L.reduce((a,e)=>a+(+e.amount||0),0);
+const csvQ=s=>`"${String(s??'').replace(/"/g,'""')}"`;
+const ddmmyyyy=s=>s?`${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}`:'';
+function exportExpenses(){
+  const ms=db.expMonth||today().slice(0,7);const E=live('expenses').filter(e=>String(e.date).startsWith(ms)).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+  if(!E.length){toast('No expenses this month');return}
+  const tp=id=>{const t=id&&byId('trips',id);return t?t.purpose:''};
+  const rows=[['Date','Time','Description','Payee','Category','Amount','UPI Ref','Company','Paid by','Claim','Trip'],
+    ...E.map(e=>[ddmmyyyy(e.date),e.time,e.note,e.payee,catLabel(e.category),(+e.amount).toFixed(2),e.ref?`="${e.ref}"`:'',e.company,e.mode,e.personal?'Personal':'Official',tp(e.tripId)])];
+  shareFile(`Expenses ${MO[+ms.slice(5)-1]} ${ms.slice(0,4)}.csv`,'\ufeff'+rows.map(r=>r.map(csvQ).join(',')).join('\r\n'),'text/csv')}
+function parseCSV(t){t=t.replace(/^\ufeff/,'');const first=t.split(/\r?\n/)[0]||'';
+  const dl=(first.match(/\t/g)||[]).length>(first.match(/,/g)||[]).length?'\t':(first.match(/;/g)||[]).length>(first.match(/,/g)||[]).length?';':',';
+  const R=[];let row=[],f='',q=false;
+  for(let i=0;i<t.length;i++){const c=t[i];
+    if(q){if(c==='"'){if(t[i+1]==='"'){f+='"';i++}else q=false}else f+=c}
+    else if(c==='"')q=true;else if(c===dl){row.push(f);f=''}else if(c==='\n'){row.push(f);R.push(row);row=[];f=''}else if(c!=='\r')f+=c}
+  if(f||row.length){row.push(f);R.push(row)}return R.filter(r=>r.some(x=>String(x).trim()))}
+function importExpenses(text){
+  const rows=parseCSV(text);if(rows.length<2){toast('Nothing to import in that file');return}
+  const H=rows[0].map(h=>String(h).toLowerCase().replace(/[^a-z]/g,''));
+  const col=(...n)=>{let i=H.findIndex(h=>n.includes(h));if(i<0)i=H.findIndex(h=>n.some(x=>h.includes(x)));return i};
+  const ci={date:col('date','txndate','transactiondate'),time:col('time'),note:col('description','desc','note','purpose','remarks','narration'),
+    payee:col('payee','paidto','merchant','name','to'),cat:col('category','type'),amt:col('amount','amt','debit','withdrawal'),
+    ref:col('upiref','ref','utr','reference','txnid','transactionid'),co:col('company'),mode:col('paidby','mode'),claim:col('claim','personal')};
+  if(ci.date<0||ci.amt<0){toast('The file needs at least a Date and an Amount column');return}
+  const body=rows.slice(1),g=(r,k)=>ci[k]>=0?String(r[ci[k]]??'').trim():'';
+  const debitsOnly=body.some(r=>/^\s*-/.test(g(r,'amt')));
+  const k1=e=>`d:${e.date}|${String(e.time||'').slice(0,5)}|${(+e.amount).toFixed(2)}`,k2=e=>e.ref?'r:'+String(e.ref).replace(/\D/g,''):'';
+  const seen=new Set();live('expenses').forEach(e=>{seen.add(k1(e));if(k2(e))seen.add(k2(e))});
+  let add=0,dup=0,bad=0,inc=0;const now=Date.now();
+  body.forEach(r=>{const raw=g(r,'amt');if(debitsOnly&&!/^\s*-/.test(raw)){if(parseAmt(raw))inc++;return}
+    const date=parseDate(g(r,'date'),'past'),amount=parseAmt(raw);if(!date||!amount){bad++;return}
+    const cl=g(r,'claim'),co=g(r,'co').toUpperCase();
+    const e={id:uid(),date,time:parseTime(g(r,'time')),amount,payee:g(r,'payee'),note:g(r,'note'),category:cleanCat(g(r,'cat')),
+      ref:g(r,'ref').replace(/^="?|"$/g,''),company:COS.includes(co)?co:'',mode:/card/i.test(g(r,'mode'))?'Card':/cash/i.test(g(r,'mode'))?'Cash':'UPI',
+      personal:/personal|yes|true|^y$/i.test(cl),tripId:'',source:'import',updatedAt:now,deleted:false};
+    const tr=live('trips').find(t=>t.startDate&&date>=t.startDate&&date<=(t.endDate||today()));if(tr){e.tripId=tr.id;if(!e.company)e.company=tr.company}
+    if(seen.has(k1(e))||(k2(e)&&seen.has(k2(e)))){dup++;return}seen.add(k1(e));if(k2(e))seen.add(k2(e));
+    db.expenses.push(e);db.queue['expenses:'+e.id]={t:'expenses',r:e};add++});
+  if(add){db.expMonth=db.expenses.filter(e=>e.source==='import').map(e=>e.date).sort().pop().slice(0,7)}
+  save();render();queueSync();
+  toast(`Imported ${add}${dup?` · ${dup} already here`:''}${inc?` · ${inc} incoming skipped`:''}${bad?` · ${bad} unreadable`:''}`)}
+$('#impFile').addEventListener('change',async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
+  if(/\.xlsx?$/i.test(f.name)){toast('Save the Excel as CSV first (File → Save As → CSV)');return}
+  try{importExpenses(await f.text())}catch(err){toast('Could not read that file')}});
+function fromURL(){
+  const q=new URLSearchParams(location.search),a=q.get('add');if(!a)return;
+  try{history.replaceState(null,'',location.pathname)}catch(e){}
+  const g=k=>(q.get(k)||'').trim();
+  if(a==='expense'){const pre={source:'link'};const am=parseAmt(g('amt')||g('amount'));if(am)pre.amount=am;
+    if(g('payee'))pre.payee=g('payee');if(g('note'))pre.note=g('note');const c=cleanCat(g('cat')||g('category'));if(c)pre.category=c;
+    if(g('ref'))pre.ref=g('ref');if(g('date'))pre.date=parseDate(g('date'),'past')||today();if(g('time'))pre.time=parseTime(g('time'))||nowTime();
+    const co=g('co').toUpperCase();if(COS.includes(co))pre.company=co;if(/^(upi|card|cash)$/i.test(g('mode')))pre.mode=g('mode').toUpperCase()==='UPI'?'UPI':g('mode')[0].toUpperCase()+g('mode').slice(1).toLowerCase();
+    if(/^(1|true|yes|personal)$/i.test(g('personal')))pre.personal=true;
+    db.view='money';save();render();expenseForm(null,pre)}
+  else if(a==='task'){render();taskForm(null,g('title')?{title:g('title')}:null)}
+  else if(a==='followup'){render();fuForm()}
 }
 const byId=(t,id)=>db[t].find(x=>x.id===id);
 const ACT={
@@ -467,6 +654,7 @@ const ACT={
   wa:id=>waNudge(byId('followups',id)),
   newHours:()=>hoursForm(), editHours:id=>hoursForm(byId('hours',id)),
   newTrip:()=>{if(openTrip()){toast('Close the open trip first');return}tripForm()},
+  newTripExp:id=>{expenseForm(null,{onTrip:true})},
   editTrip:id=>tripForm(byId('trips',id)),
   newNote:id=>{const t=id?byId('trips',id):openTrip();if(t)noteForm(null,t.id)},
   editNote:id=>{const n=byId('notes',id);n.kind==='personalday'?pdayForm(n):noteForm(n)},
@@ -489,8 +677,7 @@ const ACT={
   renameClient:k=>{const cur=clientName(k);const n=prompt(`Name for ${k}`,cur);if(n===null)return;const ex=aliasRec(k);
     if(!n.trim()){if(ex)put('notes',{...ex,deleted:true});return}
     put('notes',{...(ex||{}),kind:'client',payee:k,purpose:n.trim(),tripId:'',date:today()});toast(`${k} → ${n.trim()}`)},
-  qd:n=>{const d=new Date();d.setDate(d.getDate()+(+n));$('#f_due').value=dstr(d);
-    document.querySelectorAll('.qd').forEach(c=>c.classList.toggle('on',c.dataset.arg===n))},
+  dt:a=>{const i=a.indexOf('|'),k=a.slice(0,i),tok=a.slice(i+1),inp=$('#f_'+k);if(inp)setDt(inp,chipValue(tok,inp.dataset.dt==='time'))},
   pickContact:async()=>{try{const[c]=await navigator.contacts.select(['name','tel'],{multiple:false});if(!c)return;
     if(c.name&&c.name[0])$('#f_person').value=c.name[0];if(c.tel&&c.tel[0])$('#f_phone').value=c.tel[0];}catch(e){toast('Could not open contacts')}},
   closeForm:()=>closeForm(),
@@ -507,6 +694,11 @@ const ACT={
   chatTo:id=>{const c=contacts().find(x=>x.id===id);openWA(c.phone,`Hi ${firstName(c.name)}, `)},
   teamFilter:a=>{db.teamFilter=a;save();render()},
   saveForm:()=>{const v=readForm();if(v)formState.onSave(v)},
+  saveNext:()=>{formState.next=true;const v=readForm();if(v)formState.onSave(v);else if(formState)formState.next=false},
+  newExp:()=>expenseForm(), editExp:id=>expenseForm(byId('expenses',id)),
+  expMonth:n=>{const[y,m]=(db.expMonth||today().slice(0,7)).split('-').map(Number);const d=new Date(y,m-1+(+n),1);db.expMonth=dstr(d).slice(0,7);save();render()},
+  expFilter:a=>{db.expFilter=a;save();render()},
+  exportExp:()=>exportExpenses(), importExp:()=>$('#impFile').click(),
   delForm:()=>formState.onDelete(),
   saveSettings:()=>{db.settings.url=$('#s_url').value.trim();db.settings.token=$('#s_token').value.trim();
     db.settings.myName=$('#s_name').value.trim()||'Shubham';db.settings.waMode=$('#s_wa').value;save();toast('Saved');sync(true)},
@@ -540,16 +732,20 @@ function hoursRow(h){return `<div class="item" data-act="editHours" data-arg="${
 function noteRow(n){return `<div class="item" data-act="editNote" data-arg="${n.id}"><div class="main">
   <div class="t">${n.kind==='personalday'?'🚫 Personal day':esc(n.payee)}${n.personal&&n.kind!=='personalday'?' <span class="small">(personal)</span>':''}</div>
   <div class="small">${fmtDate(n.date,true)} ${esc(n.time||'')}${n.purpose?' · '+esc(n.purpose):''}</div></div></div>`}
+function expRow(e){const sub=[fmtTime(e.time),e.payee&&e.note?esc(e.note):'',e.mode&&e.mode!=='UPI'?e.mode:'',e.personal?'<b>personal</b>':''].filter(Boolean).join(' · ');
+  return `<div class="item" data-act="editExp" data-arg="${e.id}"><span class="ecat">${catEmoji(e.category)}</span><div class="main">
+  <div class="t">${esc(e.payee||e.note||e.category||'Expense')}</div><div class="small">${e.company?coTag(e.company)+' ':''}${sub}</div></div>
+  <div class="eamt" style="${e.personal?'opacity:.55':''}">${rupee(e.amount)}</div></div>`}
 function tripCard(t,compact){
   const N=live('notes').filter(n=>n.tripId===t.id).sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
-  const open=t.status!=='closed';
+  const open=t.status!=='closed',TE=live('expenses').filter(e=>e.tripId===t.id).sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time)),teo=eTot(TE.filter(e=>!e.personal));
   return `<div class="card" style="border-left:6px solid ${CO_COLOR[t.company]}">
    <div class="row"><div class="grow"><div class="t" style="font-weight:700;font-size:17px">${esc(t.purpose)}</div>
    <div class="small">${coTag(t.company)} ${esc(t.city||'')} · ${fmtDate(t.startDate)}${t.endDate?' – '+fmtDate(t.endDate):' → ongoing'}</div>
-   <div class="small">Advance ${rupee(t.advance)} · Bills to accounts: ${t.billsSubmitted?'✅':'—'} · ${N.length} note${N.length===1?'':'s'}</div></div>
+   <div class="small">Advance ${rupee(t.advance)} · Spent ${rupee(teo)} · Bills to accounts: ${t.billsSubmitted?'✅':'—'}</div></div>
    <button class="ghost" data-act="editTrip" data-arg="${t.id}">Edit</button></div>
-   ${compact?'':`<div style="margin-top:8px">${N.map(noteRow).join('')||empty('No notes yet. Add one when a payment won’t explain itself on the statement.')}</div>`}
-   <div class="btnrow">${open?`<button data-act="newNote" data-arg="${t.id}">＋ Payment note</button>${compact?'':`<button data-act="newPday" data-arg="${t.id}">＋ Personal day</button>`}`:''}
+   ${compact?'':`<div style="margin-top:8px">${TE.map(expRow).join('')}${N.map(noteRow).join('')}${!TE.length&&!N.length?empty('Nothing logged on this trip yet.'):''}</div>`}
+   <div class="btnrow">${open?`<button data-act="newTripExp" data-arg="${t.id}">＋ Expense</button>${compact?'':`<button data-act="newNote" data-arg="${t.id}">＋ Note</button><button data-act="newPday" data-arg="${t.id}">＋ Personal day</button>`}`:''}
    ${compact?'':`<button data-act="shareTrip" data-arg="${t.id}">Share for claim</button>`}
    ${!compact&&open?`<button class="primary" data-act="closeTrip" data-arg="${t.id}">Close trip</button>`:''}
    ${!compact&&!open?`<button data-act="reopenTrip" data-arg="${t.id}">Reopen</button>`:''}</div></div>`}
@@ -636,8 +832,9 @@ function punchIn(k,how){const now=nowStamp();punches().filter(r=>!r.end).forEach
 function punchOut(){const p=P();if(!p)return;const hrs=finish(p,nowStamp());toast(hrs<1/60?'Punch cancelled':`Punched out of ${p.company} · ${fmtH(hrs)}`)}
 function punchForm(x){
   const v=x?{fac:x.company,date:x.start.slice(0,10),from:x.start.slice(11,16),to:x.end?x.end.slice(11,16):'',note:x.note}:{fac:FAC[0].k,date:today(),from:'09:30',to:'18:30'};
-  form(x?'Edit punch':'Add punch',[{k:'fac',label:'Facility',type:'choice',options:FAC.map(f=>f.k)},{k:'date',label:'Date',type:'date'},
-    {k:'from',label:'In',type:'time',pair:true},{k:'to',label:'Out (leave empty if still there)',type:'time'},{k:'note',label:'Note'}],v,y=>{
+  form(x?'Edit punch':'Add punch',[{k:'fac',label:'Facility',type:'choice',options:FAC.map(f=>f.k)},{k:'date',label:'Date',type:'date',dir:'past'},
+    {k:'from',label:'In',type:'time',chips:[['9:00 am','@09:00'],['9:30 am','@09:30'],['10:00 am','@10:00'],['Now','now']]},
+    {k:'to',label:'Out (leave empty if still there)',type:'time',opt:true,chips:[['5:30 pm','@17:30'],['6:00 pm','@18:00'],['6:30 pm','@18:30'],['7:00 pm','@19:00'],['Now','now']]},{k:'note',label:'Note'}],v,y=>{
     if(!y.from){toast('In time is needed');return}const start=`${y.date}T${y.from}`;let end='';
     if(y.to){end=`${y.date}T${y.to}`;if(end<=start){const d=new Date(y.date);d.setDate(d.getDate()+1);end=`${dstr(d)}T${y.to}`}}
     put('hours',{...(x||{}),company:y.fac||FAC[0].k,project:'Attendance',category:'Attendance',start,end,hrs:end?+diffH(start,end).toFixed(3):0,note:y.note});closeForm()
@@ -674,13 +871,14 @@ const VIEWS={
       <button class="stop" data-act="stop">Stop</button></div>`;
     const cos=`<div class="card"><div class="label">${t?'Switch to':'Start working on'}</div><div class="cos">${COS.map(c=>
       `<button class="co ${t&&t.company===c?'run':''}" style="--co:${CO_COLOR[c]}" data-act="start" data-arg="${c}" aria-label="${c}">${logoImg(c)}<span>${t&&t.company===c?'● Running':'Start ▸'}</span></button>`).join('')}</div></div>`;
-    const quick=`<div class="quick"><button data-act="newTask">＋ Task</button><button data-act="newFu">＋ Delegate</button>
-      ${trip?'<button data-act="newNote">＋ Payment note</button>':'<button data-act="newTrip">＋ Start trip</button>'}<button data-act="newHours">＋ Log hours</button></div>`;
+    const quick=`<div class="quick"><button data-act="newExp">＋ Expense</button><button data-act="newTask">＋ Task</button>
+      <button data-act="newFu">＋ Delegate</button><button data-act="newHours">＋ Log hours</button></div>`;
     const tripH=trip?`<div class="label">On trip</div>`+tripCard(trip,true):'';
     const H=doneH().filter(x=>x.start.startsWith(td));
     const run=t&&t.start.startsWith(td)?diffH(t.start,new Date()):0;
     const todayH=sec('Today',`<div class="row"><div class="grow small">Logged today</div><b>${fmtH(sum(H)+run)}</b></div>
-      ${COS.map(c=>{const v=sum(H.filter(x=>x.company===c))+(t&&t.company===c?run:0);return v?`<div class="row small"><span class="dot" style="--co:${CO_COLOR[c]}"></span><span class="grow">${c}</span>${fmtH(v)}</div>`:''}).join('')}`);
+      ${COS.map(c=>{const v=sum(H.filter(x=>x.company===c))+(t&&t.company===c?run:0);return v?`<div class="row small"><span class="dot" style="--co:${CO_COLOR[c]}"></span><span class="grow">${c}</span>${fmtH(v)}</div>`:''}).join('')}
+      ${(()=>{const E=live('expenses').filter(e=>e.date===td);return E.length?`<div class="row" style="margin-top:8px;cursor:pointer" data-act="go" data-arg="money"><div class="grow small">Spent today (${E.length})</div><b>${rupee(eTot(E))}</b></div>`:''})()}`);
     const byDue=(a,b)=>(a.due||'9999').localeCompare(b.due||'9999');
     if(WIDE.matches){
       const fus=live('followups').filter(f=>f.status!=='done').sort(byDue);
@@ -734,9 +932,29 @@ const VIEWS={
       ||sec('Entries',empty('Tap a company on Home to start the timer.'));
     return h;
   },
-  trips(){
-    const o=openTrip();let h=o?`<div class="label">Open trip</div>`+tripCard(o,false)
-      :`<div class="card"><div class="empty">No trip open.</div><div class="btnrow"><button class="primary" data-act="newTrip">Start a trip</button></div></div>`;
+  money(){
+    const ms=db.expMonth||today().slice(0,7),[yy,mm]=ms.split('-').map(Number),f=db.expFilter||'All';
+    const M=live('expenses').filter(e=>String(e.date).startsWith(ms));
+    const E=M.filter(e=>f==='All'||(f==='Personal'?e.personal:(!e.personal&&e.company===f)));
+    const off=M.filter(e=>!e.personal),per=M.filter(e=>e.personal);
+    const cats=uniq(off.map(e=>e.category||'Other')).map(c=>[c,eTot(off.filter(e=>(e.category||'Other')===c))]).sort((a,b)=>b[1]-a[1]);
+    let h=db.settings.noExpTab&&db.settings.url?`<div class="banner">Expenses are saved on this device, but your Sheet doesn't have an <b>expenses</b> tab yet. Update the Sheet script (see EXPENSES-SETUP) and they'll copy over by themselves.</div>`:'';
+    h+=`<div class="row" style="margin:6px 0"><div class="mnav grow"><button class="mini" data-act="expMonth" data-arg="-1" aria-label="Previous month">‹</button><b>${MO[mm-1]} ${yy}</b>
+        ${ms<today().slice(0,7)?'<button class="mini" data-act="expMonth" data-arg="1" aria-label="Next month">›</button>':''}</div>
+        <button class="primary" data-act="newExp">＋ Expense</button></div>
+      <div class="card"><div class="row"><div class="grow"><div class="small">Official spend</div><div style="font-size:26px;font-weight:700">${rupee(eTot(off))}</div></div>
+        <div style="text-align:right"><div class="small">Personal</div><div style="font-weight:700">${rupee(eTot(per))}</div></div></div>
+        <div class="row small" style="margin-top:6px;flex-wrap:wrap;gap:12px">${COS.map(c=>{const v=eTot(off.filter(e=>e.company===c));return v?`<span><span class="dot" style="--co:${CO_COLOR[c]};display:inline-block"></span> ${c} <b>${rupee(v)}</b></span>`:''}).join('')}</div>
+        ${cats.length?`<div class="catl">${cats.map(([c,v])=>`<span>${catEmoji(c)} ${esc(c)} ${rupee(v)}</span>`).join('')}</div>`:''}
+        <div class="btnrow"><button data-act="exportExp">Export month (CSV)</button><button data-act="importExp">Import CSV</button></div></div>
+      <div class="row wrap gap" style="margin:6px 0">${['All',...COS,'Personal'].map(c=>`<span class="fchip ${f===c?'on':''}" data-act="expFilter" data-arg="${c}">${c}</span>`).join('')}</div>`;
+    const days=uniq(E.map(e=>e.date)).reverse();
+    h+=days.map(d=>{const D=E.filter(e=>e.date===d).sort((a,b)=>String(b.time).localeCompare(String(a.time)));
+      return `<div class="label">${fmtDate(d,true)} · ${rupee(eTot(D.filter(e=>!e.personal)))}</div><div class="card">${D.map(expRow).join('')}</div>`}).join('')
+      ||sec('Expenses',empty(M.length?'Nothing under this filter.':'No expenses logged this month. Tap ＋ Expense, or import your expense sheet as CSV.'));
+    const o=openTrip();
+    h+=`<div class="label" style="margin-top:28px">Trips</div>`+(o?tripCard(o,false)
+      :`<div class="card"><div class="empty">No trip open. Start one when you travel — expenses on those days attach to it for the claim.</div><div class="btnrow"><button class="primary" data-act="newTrip">Start a trip</button></div></div>`);
     const past=live('trips').filter(t=>t.status==='closed').sort((a,b)=>(b.startDate||'').localeCompare(a.startDate||''));
     if(past.length)h+=`<div class="label">Past trips</div>`+past.map(t=>db.showTrip===t.id?tripCard(t,false)
       :`<div class="card" data-act="showTrip" data-arg="${t.id}"><div class="row"><span class="dot" style="--co:${CO_COLOR[t.company]}"></span>
@@ -796,7 +1014,7 @@ function render(){
   if(!$('#sheet').classList.contains('hidden'))return;
   const v=VIEWS[db.view]?db.view:'home';
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
-  $('#title').textContent={inbox:'Inbox',home:'WorkLog',hours:'Hours',trips:'Trips',tasks:'Tasks',followups:'Follow-ups',settings:'Settings'}[v];
+  $('#title').textContent={inbox:'Inbox',home:'WorkLog',hours:'Hours',money:'Expenses',tasks:'Tasks',followups:'Follow-ups',settings:'Settings'}[v];
   const fq=document.activeElement&&document.activeElement.id==='mailQ'?document.activeElement.selectionStart:null;
   $('#main').innerHTML=VIEWS[v]();
   if(fq!==null&&$('#mailQ')){const q=$('#mailQ');q.focus();q.setSelectionRange(fq,fq)}setStatus();applyAccent();coBar();
@@ -810,7 +1028,7 @@ if(db.timer){const t=db.timer;delete db.timer;const r={id:uid(),company:t.compan
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){render();sync(false)}});
 addEventListener('online',()=>sync(false));addEventListener('offline',()=>setStatus());
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
-render();sync(false);
+render();fromURL();sync(false);
 </script>
 </body>
 </html>
