@@ -160,6 +160,8 @@ input.amt{font-size:28px;font-weight:700;padding:10px 12px;font-variant-numeric:
 .mnav b{font-size:17px;min-width:92px;text-align:center}
 .catl{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .catl span{background:var(--chip);border-radius:9px;padding:4px 9px;font-size:13px;font-weight:600}
+.rcpt{display:inline-block;text-decoration:none;font-size:12px;font-weight:700;padding:1px 7px;border-radius:7px;background:var(--chip);color:var(--ink);margin-left:4px}
+.chk{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:7px;background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--warn)}
 .banner{background:color-mix(in srgb,var(--warn) 14%,var(--card));border:1px solid color-mix(in srgb,var(--warn) 40%,var(--line));border-radius:12px;padding:10px 12px;font-size:14px;margin:10px 0}
 .btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .btnrow button{flex:1;min-width:120px}
@@ -180,6 +182,8 @@ input.amt{font-size:28px;font-weight:700;padding:10px 12px;font-variant-numeric:
 <div id="sheet" class="sheet hidden"><div class="sheet-body" id="sheetBody"></div></div>
 <div id="toast"></div>
 <input type="file" id="impFile" accept=".csv,text/csv,text/plain" style="display:none">
+<input type="file" id="billFile" accept="image/*,application/pdf" style="display:none">
+<input type="file" id="billsFile" accept="image/*,application/pdf" multiple style="display:none">
 
 <script>
 /* ---------- data ---------- */
@@ -208,7 +212,7 @@ let db;
 try{db=JSON.parse(localStorage.getItem(KEY))||{}}catch(e){db={}}
 TYPES.forEach(t=>db[t]=db[t]||[]);
 db.queue=db.queue||{};db.settings=db.settings||{};db.last=db.last||{};db.view=db.view||'home';if(db.view==='trips')db.view='money';
-db.taskFilter=db.taskFilter||'All';
+db.taskFilter=db.taskFilter||'All';db.uploads=db.uploads||[];
 function save(){try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){toast('Phone storage full')}}
 
 /* ---------- helpers ---------- */
@@ -337,7 +341,7 @@ async function sync(manual){
     s.noExpTab=j.data.expenses===undefined;
     TYPES.forEach(t=>(j.data[t]||[]).forEach(sr=>{sr=norm(t,sr);const L=db[t];const i=L.findIndex(x=>x.id===sr.id);
       if(i<0)L.push(sr);else if((sr.updatedAt||0)>(L[i].updatedAt||0)&&!db.queue[t+':'+sr.id])L[i]=sr}));
-    s.lastSync=Date.now();save();if(!$('#sheet').classList.contains('hidden'))setStatus();else render();
+    s.lastSync=Date.now();save();setTimeout(processUploads,50);if(!$('#sheet').classList.contains('hidden'))setStatus();else render();
     if(manual)toast('Synced with Sheet');
   }catch(e){if(manual)toast('Sync failed — '+e.message)}
   finally{syncing=false;setStatus()}
@@ -536,11 +540,21 @@ function expenseForm(x,pre){
   if(!x&&trip&&v.date<trip.startDate)v.onTrip=false;
   form(x?'Edit expense':'Add expense',F.expense(trip),v,y=>{
     const {onTrip,...r}=y,next=formState&&formState.next;
-    put('expenses',{...(x||{}),...r,company:r.company||curCo(),mode:r.mode||'UPI',tripId:onTrip&&trip?trip.id:'',source:x?(x.source||'app'):((pre&&pre.source)||'app')});
+    if(!x){const tw=live('expenses').find(e=>e.receipt&&Math.abs((+e.amount||0)-r.amount)<1&&Math.abs(diffH(e.date,r.date))<=24);
+      if(tw&&!confirm(`The ${tw.payee||'e-mailed'} receipt of ${rupee(tw.amount)} (${fmtDate(tw.date)}) is already logged. Add this as a separate expense anyway?`)){
+        if(formState)formState.next=false;expenseForm(tw);return}}
+    const bill=formState&&formState.bill;
+    const rec={...(x||{}),...r,company:r.company||curCo(),mode:r.mode||'UPI',tripId:onTrip&&trip?trip.id:'',status:'',source:x?(x.source||'app'):((pre&&pre.source)||'app')};
+    put('expenses',rec);if(bill)queueBill(bill,rec,false).catch(e=>toast(e.message));
     closeForm();toast(`${rupee(r.amount)}${r.payee?' · '+r.payee:''} saved`);
     if(next)expenseForm(null,{date:r.date,company:r.company,mode:r.mode});
   },x?()=>{if(del('expenses',x))closeForm()}:null);
   if(!x){const row=$('#sheetBody .btnrow');if(row)row.insertAdjacentHTML('beforeend','<button data-act="saveNext">Save & add another</button>')}
+  {const row=$('#sheetBody .btnrow');if(row)row.insertAdjacentHTML('beforebegin',`<div class="f"><button type="button" data-act="pickBill" style="width:100%">📷 ${x&&x.receipt?'Replace bill / receipt':'Attach bill (photo or PDF)'}</button>
+    <div class="small" id="billName" style="margin-top:6px">${x&&pendingBill(x.id)?'⏳ Bill uploading…':''}</div></div>`)}
+  if(x&&(x.receipt||x.status==='check')){const h=$('#sheetBody .sheet-head');if(h)h.insertAdjacentHTML('afterend',
+    `${x.status==='check'?'<div class="banner">Filed from an e-mailed receipt — the amount or details couldn\u2019t be read for sure. Check them against the receipt and save.</div>':''}
+     ${x.receipt?`<div class="btnrow" style="margin-top:4px"><a class="rcpt" style="font-size:14px;padding:8px 12px" href="${esc(x.receipt)}" target="_blank" rel="noopener">📎 Open receipt</a></div>`:''}`)}
   const py=$('#f_payee');if(py)py.addEventListener('change',()=>{const n=py.value.trim().toLowerCase();if(!n)return;
     const last=live('expenses').filter(e=>String(e.payee).toLowerCase()===n).sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time))[0];if(!last)return;
     if(last.category&&!document.querySelector('input[name="f_category"]:checked')){const c=document.querySelector(`input[name="f_category"][value="${CSS.escape(last.category)}"]`);if(c)c.checked=true}
@@ -566,12 +580,13 @@ function tripText(t){
   const L=[`TRIP — ${t.company}: ${t.purpose}${t.city?', '+t.city:''}`,
     `Dates: ${fmtDate(t.startDate)} ${(t.startDate||'').slice(0,4)} – ${t.endDate?fmtDate(t.endDate)+' '+t.endDate.slice(0,4):'ongoing'}`,
     `Advance received: ${rupee(t.advance)}`,`Food bills handed to accounts: ${t.billsSubmitted?'Yes':'No'}`];
+  if(t.sheet)L.push(`Claim sheet: ${t.sheet}`);if(t.folder)L.push(`Receipts folder: ${t.folder}`);
   if(pd.length)L.push('','Personal days (exclude from claim):',...pd.map(n=>`- ${fmtDate(n.date,true)}${n.purpose?' — '+n.purpose:''}`));
   const off=pay.filter(n=>!n.personal),per=pay.filter(n=>n.personal);
   L.push('','Payment notes (official):',...(off.length?off.map(n=>`- ${fmtDate(n.date)} ${n.time||''} — ${n.payee}${n.purpose?' — '+n.purpose:''}`):['- none']));
   if(per.length)L.push('','Personal payments (exclude):',...per.map(n=>`- ${fmtDate(n.date)} ${n.time||''} — ${n.payee}${n.purpose?' — '+n.purpose:''}`));
   const E=live('expenses').filter(e=>e.tripId===t.id).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
-  const eo=E.filter(e=>!e.personal),ep=E.filter(e=>e.personal),eline=e=>`- ${fmtDate(e.date)} ${e.time||''} — ${e.category||'Other'} — ${e.payee||''}${e.note?' — '+e.note:''} — ${rupee(e.amount)}${e.mode&&e.mode!=='UPI'?' ('+e.mode+')':''}${e.ref?' · ref '+e.ref:''}`;
+  const eo=E.filter(e=>!e.personal),ep=E.filter(e=>e.personal),eline=e=>`- ${fmtDate(e.date)} ${e.time||''} — ${e.category||'Other'} — ${e.payee||''}${e.note?' — '+e.note:''} — ${rupee(e.amount)}${e.mode&&e.mode!=='UPI'?' ('+e.mode+')':''}${e.ref?' · ref '+e.ref:''}${e.receipt?' · receipt: '+e.receipt:''}`;
   if(E.length){L.push('',`Expenses logged (official) — total ${rupee(eTot(eo))}:`,...(eo.length?eo.map(eline):['- none']));
     const bc=uniq(eo.map(e=>e.category||'Other'));if(bc.length)L.push('By category: '+bc.map(c=>`${c} ${rupee(eTot(eo.filter(e=>(e.category||'Other')===c)))}`).join(' · '));
     if(ep.length)L.push('','Personal expenses (exclude):',...ep.map(eline));
@@ -592,8 +607,8 @@ function exportExpenses(){
   const ms=db.expMonth||today().slice(0,7);const E=live('expenses').filter(e=>String(e.date).startsWith(ms)).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
   if(!E.length){toast('No expenses this month');return}
   const tp=id=>{const t=id&&byId('trips',id);return t?t.purpose:''};
-  const rows=[['Date','Time','Description','Payee','Category','Amount','UPI Ref','Company','Paid by','Claim','Trip'],
-    ...E.map(e=>[ddmmyyyy(e.date),e.time,e.note,e.payee,catLabel(e.category),(+e.amount).toFixed(2),e.ref?`="${e.ref}"`:'',e.company,e.mode,e.personal?'Personal':'Official',tp(e.tripId)])];
+  const rows=[['Date','Time','Description','Payee','Category','Amount','UPI Ref','Company','Paid by','Claim','Trip','Receipt'],
+    ...E.map(e=>[ddmmyyyy(e.date),e.time,e.note,e.payee,catLabel(e.category),(+e.amount).toFixed(2),e.ref?`="${e.ref}"`:'',e.company,e.mode,e.personal?'Personal':'Official',tp(e.tripId),e.receipt||''])];
   shareFile(`Expenses ${MO[+ms.slice(5)-1]} ${ms.slice(0,4)}.csv`,'\ufeff'+rows.map(r=>r.map(csvQ).join(',')).join('\r\n'),'text/csv')}
 function parseCSV(t){t=t.replace(/^\ufeff/,'');const first=t.split(/\r?\n/)[0]||'';
   const dl=(first.match(/\t/g)||[]).length>(first.match(/,/g)||[]).length?'\t':(first.match(/;/g)||[]).length>(first.match(/,/g)||[]).length?';':',';
@@ -630,6 +645,50 @@ function importExpenses(text){
 $('#impFile').addEventListener('change',async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
   if(/\.xlsx?$/i.test(f.name)){toast('Save the Excel as CSV first (File → Save As → CSV)');return}
   try{importExpenses(await f.text())}catch(err){toast('Could not read that file')}});
+/* ---------- bill photos / PDFs → that company's Drive (via its Mail Scout), queued so it works offline ---------- */
+const MEMUP={};                                         // uploads too big to keep in phone storage wait here
+function shrinkImage(file){return new Promise((ok,no)=>{const u=URL.createObjectURL(file),im=new Image();
+  im.onload=()=>{const k=Math.min(1,1800/Math.max(im.naturalWidth,im.naturalHeight)),c=document.createElement('canvas');
+    c.width=Math.round(im.naturalWidth*k);c.height=Math.round(im.naturalHeight*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);
+    ok(c.toDataURL('image/jpeg',0.72).split(',')[1])};
+  im.onerror=()=>{URL.revokeObjectURL(u);no(new Error('Could not read that photo'))};im.src=u})}
+const readB64=file=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=()=>no(r.error);r.readAsDataURL(file)});
+async function queueBill(file,exp,ocr){
+  const pdf=/pdf/i.test(file.type)||/\.pdf$/i.test(file.name);
+  if(pdf&&file.size>15e6){toast('That PDF is over 15 MB — too big to upload');return}
+  const data=pdf?await readB64(file):await shrinkImage(file);
+  const u={id:uid(),expId:exp.id,mime:pdf?'application/pdf':'image/jpeg',ocr:!!ocr,at:Date.now()};
+  db.uploads.push(u);MEMUP[u.id]=data;
+  try{localStorage.setItem(KEY+'.up.'+u.id,data)}catch(e){u.memOnly=true}
+  save();render();processUploads()}
+function upTarget(co){const m=live('mail').find(x=>x.company===co&&x.reader);return m?m.reader:db.settings.url}
+let uploading=false;
+async function processUploads(){
+  if(uploading||!db.uploads.length||!navigator.onLine||!db.settings.url)return;uploading=true;
+  try{for(const u of [...db.uploads]){
+    const e=byId('expenses',u.expId);let data=MEMUP[u.id];if(!data)try{data=localStorage.getItem(KEY+'.up.'+u.id)}catch(_){}
+    if(!e||e.deleted||!data){dropUpload(u);continue}
+    const trip=e.tripId&&byId('trips',e.tripId),sameCo=trip&&trip.company===e.company;
+    try{
+      const r=await fetch(upTarget(e.company),{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token:db.settings.token||'',action:'upload',
+        data,mime:u.mime,ocr:u.ocr,date:e.date,category:e.category||'Bill',vendor:e.payee||'',amount:e.amount||0,company:e.company,
+        tripId:sameCo?trip.id:'',tripName:sameCo?`${trip.startDate} ${trip.purpose}${trip.city?', '+trip.city:''}`:''})});
+      const j=await r.json();if(!j.ok)throw new Error(j.error||'Upload refused');
+      const cur=byId('expenses',u.expId);dropUpload(u);
+      if(cur){const amt=+cur.amount||0;put('expenses',{...cur,receipt:j.url,amount:amt||j.amount||0,status:amt?cur.status||'':'check'})}
+    }catch(err){u.tries=(u.tries||0)+1;u.err=String(err.message||err);save();if(u.tries===1)toast('Bill upload waiting — will retry')}
+  }}finally{uploading=false;render()}}
+function dropUpload(u){db.uploads=db.uploads.filter(x=>x.id!==u.id);delete MEMUP[u.id];try{localStorage.removeItem(KEY+'.up.'+u.id)}catch(_){}save()}
+const pendingBill=id=>db.uploads.some(u=>u.expId===id);
+$('#billsFile').addEventListener('change',async e=>{const files=[...e.target.files];e.target.value='';if(!files.length)return;
+  const trip=openTrip();let n=0;
+  for(const f of files){const d=new Date(f.lastModified||Date.now()),date=dstr(d),time=`${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const onTrip=trip&&date>=trip.startDate&&(!trip.endDate||date<=trip.endDate);
+    const rec={date,time,amount:0,payee:'',note:'Paper bill',category:'Food',company:onTrip?trip.company:curCo(),tripId:onTrip?trip.id:'',mode:'UPI',personal:false,source:'upload',status:'check'};
+    put('expenses',rec);try{await queueBill(f,rec,true);n++}catch(err){toast(err.message)}}
+  toast(`${n} bill${n===1?'':'s'} uploading — add the amounts under “Receipts to check”`)});
+$('#billFile').addEventListener('change',e=>{const f=e.target.files[0];e.target.value='';if(!f||!formState)return;formState.bill=f;
+  const s=$('#billName');if(s)s.textContent='📎 '+(f.name||'photo')+' — uploads when you save'});
 function fromURL(){
   const q=new URLSearchParams(location.search),a=q.get('add');if(!a)return;
   try{history.replaceState(null,'',location.pathname)}catch(e){}
@@ -699,6 +758,7 @@ const ACT={
   expMonth:n=>{const[y,m]=(db.expMonth||today().slice(0,7)).split('-').map(Number);const d=new Date(y,m-1+(+n),1);db.expMonth=dstr(d).slice(0,7);save();render()},
   expFilter:a=>{db.expFilter=a;save();render()},
   exportExp:()=>exportExpenses(), importExp:()=>$('#impFile').click(),
+  pickBill:()=>$('#billFile').click(), uploadBills:()=>{if(!db.settings.url){toast('Link your Sheet in Settings first');return}$('#billsFile').click()},
   delForm:()=>formState.onDelete(),
   saveSettings:()=>{db.settings.url=$('#s_url').value.trim();db.settings.token=$('#s_token').value.trim();
     db.settings.myName=$('#s_name').value.trim()||'Shubham';db.settings.waMode=$('#s_wa').value;save();toast('Saved');sync(true)},
@@ -709,6 +769,7 @@ const ACT={
 };
 document.addEventListener('click',e=>{
   if(e.target.id==='sheet'){closeForm();return}
+  if(e.target.closest('[data-noact]'))return;
   const b=e.target.closest('[data-act]');if(!b)return;
   const f=ACT[b.dataset.act];if(f){e.preventDefault();f(b.dataset.arg)}
 });
@@ -734,7 +795,7 @@ function noteRow(n){return `<div class="item" data-act="editNote" data-arg="${n.
   <div class="small">${fmtDate(n.date,true)} ${esc(n.time||'')}${n.purpose?' · '+esc(n.purpose):''}</div></div></div>`}
 function expRow(e){const sub=[fmtTime(e.time),e.payee&&e.note?esc(e.note):'',e.mode&&e.mode!=='UPI'?e.mode:'',e.personal?'<b>personal</b>':''].filter(Boolean).join(' · ');
   return `<div class="item" data-act="editExp" data-arg="${e.id}"><span class="ecat">${catEmoji(e.category)}</span><div class="main">
-  <div class="t">${esc(e.payee||e.note||e.category||'Expense')}</div><div class="small">${e.company?coTag(e.company)+' ':''}${sub}</div></div>
+  <div class="t">${esc(e.payee||e.note||e.category||'Expense')}${e.status==='check'?' <span class="chk">CHECK</span>':''}</div><div class="small">${e.company?coTag(e.company)+' ':''}${sub}${pendingBill(e.id)?'<span class="rcpt">⏳ uploading</span>':e.receipt?`<a class="rcpt" href="${esc(e.receipt)}" target="_blank" rel="noopener" data-noact="1">📎 Receipt</a>`:''}</div></div>
   <div class="eamt" style="${e.personal?'opacity:.55':''}">${rupee(e.amount)}</div></div>`}
 function tripCard(t,compact){
   const N=live('notes').filter(n=>n.tripId===t.id).sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
@@ -744,6 +805,7 @@ function tripCard(t,compact){
    <div class="small">${coTag(t.company)} ${esc(t.city||'')} · ${fmtDate(t.startDate)}${t.endDate?' – '+fmtDate(t.endDate):' → ongoing'}</div>
    <div class="small">Advance ${rupee(t.advance)} · Spent ${rupee(teo)} · Bills to accounts: ${t.billsSubmitted?'✅':'—'}</div></div>
    <button class="ghost" data-act="editTrip" data-arg="${t.id}">Edit</button></div>
+   ${t.folder||t.sheet?`<div class="row gap" style="margin-top:8px">${t.folder?`<a class="rcpt" style="font-size:13px;padding:6px 10px" href="${esc(t.folder)}" target="_blank" rel="noopener">📁 Trip folder</a>`:''}${t.sheet?`<a class="rcpt" style="font-size:13px;padding:6px 10px" href="${esc(t.sheet)}" target="_blank" rel="noopener">📊 Claim sheet</a>`:''}</div>`:''}
    ${compact?'':`<div style="margin-top:8px">${TE.map(expRow).join('')}${N.map(noteRow).join('')}${!TE.length&&!N.length?empty('Nothing logged on this trip yet.'):''}</div>`}
    <div class="btnrow">${open?`<button data-act="newTripExp" data-arg="${t.id}">＋ Expense</button>${compact?'':`<button data-act="newNote" data-arg="${t.id}">＋ Note</button><button data-act="newPday" data-arg="${t.id}">＋ Personal day</button>`}`:''}
    ${compact?'':`<button data-act="shareTrip" data-arg="${t.id}">Share for claim</button>`}
@@ -946,8 +1008,10 @@ const VIEWS={
         <div style="text-align:right"><div class="small">Personal</div><div style="font-weight:700">${rupee(eTot(per))}</div></div></div>
         <div class="row small" style="margin-top:6px;flex-wrap:wrap;gap:12px">${COS.map(c=>{const v=eTot(off.filter(e=>e.company===c));return v?`<span><span class="dot" style="--co:${CO_COLOR[c]};display:inline-block"></span> ${c} <b>${rupee(v)}</b></span>`:''}).join('')}</div>
         ${cats.length?`<div class="catl">${cats.map(([c,v])=>`<span>${catEmoji(c)} ${esc(c)} ${rupee(v)}</span>`).join('')}</div>`:''}
-        <div class="btnrow"><button data-act="exportExp">Export month (CSV)</button><button data-act="importExp">Import CSV</button></div></div>
+        <div class="btnrow"><button data-act="uploadBills">📷 Upload bills</button><button data-act="exportExp">Export CSV</button><button data-act="importExp">Import CSV</button></div></div>
       <div class="row wrap gap" style="margin:6px 0">${['All',...COS,'Personal'].map(c=>`<span class="fchip ${f===c?'on':''}" data-act="expFilter" data-arg="${c}">${c}</span>`).join('')}</div>`;
+    const CK=live('expenses').filter(e=>e.status==='check').sort((a,b)=>b.date.localeCompare(a.date));
+    if(CK.length)h+=`<div class="label"><span class="due">Receipts to check (${CK.length})</span></div><div class="card">${CK.map(expRow).join('')}</div>`;
     const days=uniq(E.map(e=>e.date)).reverse();
     h+=days.map(d=>{const D=E.filter(e=>e.date===d).sort((a,b)=>String(b.time).localeCompare(String(a.time)));
       return `<div class="label">${fmtDate(d,true)} · ${rupee(eTot(D.filter(e=>!e.personal)))}</div><div class="card">${D.map(expRow).join('')}</div>`}).join('')
@@ -1028,7 +1092,7 @@ if(db.timer){const t=db.timer;delete db.timer;const r={id:uid(),company:t.compan
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){render();sync(false)}});
 addEventListener('online',()=>sync(false));addEventListener('offline',()=>setStatus());
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
-render();fromURL();sync(false);
+render();fromURL();sync(false);setTimeout(processUploads,1500);
 </script>
 </body>
 </html>
