@@ -71,6 +71,7 @@ html,body,header{transition:background-color .4s}
 .tick{width:28px;height:28px;border-radius:50%;border:2px solid var(--mute);padding:0;background:transparent;flex:none}
 .tick.on{background:var(--ok);border-color:var(--ok)}
 .wa{background:#25d366;color:#fff;font-weight:600;padding:8px 12px;flex:none}
+.wa.mini{padding:6px 11px}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
 th,td{text-align:left;padding:8px 4px;border-top:1px solid var(--line)}
 th{font-size:12px;color:var(--mute);border-top:0}
@@ -107,6 +108,13 @@ input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;displa
   background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-weight:600;font-size:14px;
   opacity:0;pointer-events:none;transition:opacity .2s;z-index:20;max-width:90%}
 #toast.show{opacity:1}
+.facs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}
+.fac{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:12px;border-radius:12px;background:color-mix(in srgb,var(--co) 10%,var(--card));border:1px solid color-mix(in srgb,var(--co) 35%,var(--line));text-align:left}
+.fac b{font-size:16px}.fac span{font-size:12px;color:var(--mute)}
+.punch{border-left:6px solid var(--co)}.punch .big{font-size:20px;font-weight:700;margin-top:2px}
+.elapsed.sm{font-size:26px}
+.danger-fill{background:var(--danger);color:#fff;font-weight:600}
+.item.att{gap:8px}.seg{display:inline-block;padding:3px 9px;margin:2px 4px 2px 0;border-radius:8px;font-size:13px;font-weight:600;color:var(--ink);text-decoration:none;background:color-mix(in srgb,var(--co) 16%,transparent)}
 .badge{position:absolute;top:2px;left:calc(50% + 6px);min-width:17px;height:17px;padding:0 5px;border-radius:9px;background:var(--danger);color:#fff;font-size:10.5px;font-weight:700;line-height:17px;text-align:center;display:none}
 .badge.on{display:block}
 .mail{padding:11px 0;border-top:1px solid var(--line)}.mail:first-child{border-top:0}
@@ -195,8 +203,9 @@ const nowTime=()=>{const d=new Date();return `${pad(d.getHours())}:${pad(d.getMi
 const nowStamp=()=>today()+'T'+nowTime();
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const live=t=>db[t].filter(r=>!r.deleted);
-const doneH=()=>live('hours').filter(h=>h.end);
-const T=()=>live('hours').filter(h=>!h.end).sort((a,b)=>b.start.localeCompare(a.start))[0]||null;
+const workH=()=>live('hours').filter(h=>h.category!=='Attendance');
+const doneH=()=>workH().filter(h=>h.end);
+const T=()=>workH().filter(h=>!h.end).sort((a,b)=>b.start.localeCompare(a.start))[0]||null;
 const WIDE=matchMedia('(min-width: 1000px)');
 const MO=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const DAY=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -208,7 +217,7 @@ const sum=L=>L.reduce((a,x)=>a+(+x.hrs||0),0);
 const rupee=n=>'₹ '+Number(n||0).toLocaleString('en-IN');
 function weekStart(){const d=new Date();d.setDate(d.getDate()-((d.getDay()+6)%7));return dstr(d)}
 const uniq=a=>[...new Set(a.filter(Boolean))].sort((x,y)=>x.localeCompare(y));
-const projects=()=>uniq([...live('hours'),...live('tasks'),...live('followups')].map(x=>x.project));
+const projects=()=>uniq([...workH(),...live('tasks'),...live('followups')].map(x=>x.project));
 const persons=()=>uniq(live('followups').map(x=>x.person));
 const openTrip=()=>live('trips').find(t=>t.status!=='closed');
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),2200)}
@@ -263,6 +272,8 @@ function field(f,v){
     return `<div class="f"><label>${esc(f.label)}</label><div class="chips">${q.map(([l,n])=>
       `<span class="fchip qd" data-act="qd" data-arg="${n}">${l}</span>`).join('')}</div>
       <input id="${id}" type="date" value="${esc(v)}" style="margin-top:8px"></div>`}
+  if(f.type==='who'){const inp=field({...f,type:'text'},v);return inp.replace(/^<div class="f"><label for="[^"]*">[^<]*<\/label>/,
+    `<div class="f"><label for="${id}">${esc(f.label)}</label><div class="chips" id="whoChips" style="margin-bottom:8px"></div>`)}
   if(f.type==='check')return `<div class="f"><label class="check"><input type="checkbox" id="${id}" ${v?'checked':''}>${esc(f.label)}</label></div>`;
   if(f.type==='textarea')return `<div class="f"><label for="${id}">${esc(f.label)}</label><textarea id="${id}" placeholder="${esc(f.ph||'')}">${esc(v)}</textarea></div>`;
   const dl=f.list?`<datalist id="dl_${f.k}">${f.list.map(o=>`<option value="${esc(o)}">`).join('')}</datalist>`:'';
@@ -282,9 +293,9 @@ function form(title,fields,vals,onSave,onDelete){
     else{html+=field(f,vals[f.k]);i++}}
   $('#sheetBody').innerHTML=`<form autocomplete="on" onsubmit="return false"><div class="sheet-head"><h2>${esc(title)}</h2><button class="ghost" data-act="closeForm">✕</button></div>${html}
     <div class="btnrow"><button class="primary" data-act="saveForm">Save</button>${onDelete?'<button class="danger" data-act="delForm">Delete</button>':''}</div></form>`;
-  $('#sheet').classList.remove('hidden');
+  $('#sheet').classList.remove('hidden');refreshWho();
   const p=$('#f_person');if(p)p.addEventListener('change',()=>{const ph=$('#f_phone');if(ph&&!ph.value){
-    const hit=[...live('followups')].reverse().find(x=>x.person===p.value&&x.phone);if(hit)ph.value=hit.phone}});
+    const c=findContact(p.value);const hit=c?{phone:c.phone}:[...live('followups')].reverse().find(x=>x.person===p.value&&x.phone);if(hit)ph.value=hit.phone}});
   const first=$('#sheetBody input[type=text],#sheetBody textarea');if(first&&!first.value&&!/iPhone|iPad/.test(navigator.userAgent))first.focus();
 }
 function readForm(){
@@ -335,12 +346,12 @@ const F={
     {k:'project',label:'Project',list:projects()},{k:'due',label:'Due',type:'date'},
     {k:'priority',label:'Priority',type:'choice',options:['Normal','High']},{k:'notes',label:'Notes',type:'textarea'},
     ...(edit?[{k:'done',label:'Done',type:'check'}]:[])],
-  fu:edit=>[{k:'person',label:'Who',req:true,list:persons(),ac:'name',pick:true},
+  fu:edit=>[{k:'company',label:'Company',type:'company'},{k:'person',label:'Who',req:true,type:'who',list:persons(),ac:'name',pick:true},
     {k:'what',label:'What you need from them',req:true,ph:'e.g. VSWR report for BBBS PA module'},
     {k:'due',label:'By when',type:'quickdate'},
     ...(edit?[{k:'done',label:'Received — close it',type:'check'}]:[]),
-    {k:'phone',label:'WhatsApp number',type:'tel',ph:'Filled from contacts',ac:'tel',more:true},
-    {k:'company',label:'Company',type:'company',more:true},{k:'project',label:'Project',list:projects(),more:true},
+    {k:'phone',label:'WhatsApp number',type:'tel',ph:'Filled when you tap a name',ac:'tel',more:true},
+    {k:'project',label:'Project',list:projects(),more:true},
     {k:'notes',label:'Notes',type:'textarea',more:true}],
   trip:()=>[{k:'company',label:'Company',type:'company'},{k:'purpose',label:'Purpose',req:true,ph:'e.g. SRS exhibition – Histolog'},
     {k:'city',label:'City'},{k:'startDate',label:'From',type:'date',pair:true},{k:'endDate',label:'To',type:'date'},
@@ -352,9 +363,9 @@ const F={
 
 /* ---------- actions ---------- */
 function startTimer(co){
-  const lastP=(live('hours').filter(h=>h.company===co).sort((a,b)=>b.start.localeCompare(a.start))[0]||{}).project||'';
+  const lastP=(workH().filter(h=>h.company===co).sort((a,b)=>b.start.localeCompare(a.start))[0]||{}).project||'';
   form(`Start ${co}`,F.start(),{project:lastP,category:'Work'},v=>{
-    const now=nowStamp();live('hours').filter(r=>!r.end).forEach(r=>finish(r,now));
+    const now=nowStamp();workH().filter(r=>!r.end).forEach(r=>finish(r,now));
     put('hours',{company:co,project:v.project,category:v.category||'Work',start:now,end:'',hrs:0,note:''});
     closeForm();toast(`${co} timer started`)})
 }
@@ -380,9 +391,23 @@ function taskForm(t,pre,after){
   },t?()=>{if(del('tasks',t))closeForm()}:null)
 }
 function fuForm(f,pre,after){
-  form(f?'Edit follow-up':'New follow-up',F.fu(!!f),f?{...f,done:f.status==='done'}:{company:defCo(),...(pre||{})},x=>{
-    const {done,...rest}=x;put('followups',{...(f||{}),...rest,company:x.company||defCo(),status:done?'done':'open'});if(after)after();closeForm()
-  },f?()=>{if(del('followups',f))closeForm()}:null)
+  form(f?'Edit follow-up':'New follow-up',F.fu(!!f),f?{...f,done:f.status==='done'}:{company:T()?T().company:defCo(),...(pre||{})},x=>{
+    const send=formState&&formState.sendWa;const {done,...rest}=x;
+    const rec={...(f||{}),...rest,company:x.company||defCo(),status:done?'done':'open'};
+    if(!rec.phone){const c=findContact(rec.person);if(c)rec.phone=c.phone}
+    if(send&&!f)rec.handedAt=nowStamp();if(send)rec.lastNudged=nowStamp();
+    put('followups',rec);if(rec.phone)saveContact(rec.person,rec.phone,rec.company);
+    if(after)after();closeForm();if(send)openWA(rec.phone,f?msgNudge(rec):msgHandover(rec))
+  },f?()=>{if(del('followups',f))closeForm()}:null);
+  const row=$('#sheetBody .btnrow');if(row)row.insertAdjacentHTML('afterbegin',`<button class="wa" data-act="saveFuWa" style="flex:1.4">${f?'Save & nudge on WhatsApp':'Save & send on WhatsApp'}</button>`);
+}
+function contactForm(c){
+  form(c?'Edit contact':'New contact',[{k:'company',label:'Company',type:'company'},{k:'person',label:'Name',req:true,ac:'name',pick:true},
+    {k:'phone',label:'WhatsApp number',req:true,type:'tel',ac:'tel',ph:'10-digit mobile'},{k:'role',label:'Role (optional)',ph:'e.g. RF test engineer'}],
+    c?{company:c.company,person:c.name,phone:c.phone,role:c.role}:{company:db.teamFilter&&db.teamFilter!=='All'?db.teamFilter:defCo()},x=>{
+      if(!normPhone(x.phone)){toast('Check the number');return}
+      put('notes',{...(c?c.rec:{}),kind:'contact',payee:x.person,purpose:x.phone,date:x.company||defCo(),time:x.role,tripId:''});closeForm();toast('Contact saved')
+    },c?()=>{if(del('notes',c.rec))closeForm()}:null)
 }
 function tripForm(t){
   form(t?'Edit trip':'Start trip',F.trip(),t?{...t}:{company:defCo(),startDate:today()},x=>{
@@ -400,11 +425,8 @@ function pdayForm(n,tripId){
   },n?()=>{if(del('notes',n))closeForm()}:null)
 }
 function waNudge(f){
-  let p=(f.phone||'').replace(/\D/g,'');if(p.length===11&&p[0]==='0')p=p.slice(1);if(p.length===10)p='91'+p;
-  const first=(f.person||'').split(' ')[0];const me=db.settings.myName||'Shubham';
-  const txt=`Hi ${first}, following up on ${f.what}${f.due?` — needed by ${fmtDate(f.due)}`:''}. Please share an update. – ${me}`;
-  put('followups',{...f,lastNudged:nowStamp()});
-  location.href=`https://wa.me/${p}?text=${encodeURIComponent(txt)}`;
+  const ph=f.phone||(findContact(f.person)||{}).phone||'';
+  put('followups',{...f,phone:ph,lastNudged:nowStamp()});openWA(ph,msgNudge(f));
 }
 async function shareText(title,text){
   if(navigator.share){try{await navigator.share({title,text});return}catch(e){if(e.name==='AbortError')return}}
@@ -472,10 +494,22 @@ const ACT={
   pickContact:async()=>{try{const[c]=await navigator.contacts.select(['name','tel'],{multiple:false});if(!c)return;
     if(c.name&&c.name[0])$('#f_person').value=c.name[0];if(c.tel&&c.tel[0])$('#f_phone').value=c.tel[0];}catch(e){toast('Could not open contacts')}},
   closeForm:()=>closeForm(),
+  punchIn:k=>punchIn(k), punchOut:()=>punchOut(), editPunch:id=>punchForm(byId('hours',id)), newPunch:()=>punchForm(), exportAttendance:()=>exportAttendance(),
+  punchHere:async()=>{toast('Finding your location…');try{const c=await getPos(),n=nearestFac(c.latitude,c.longitude);
+    if(n&&n.d<=1.5)punchIn(n.k,'📍 '+Math.round(n.d*1000)+' m');else toast(`Not near a saved facility${n?` (${n.d.toFixed(1)} km from ${n.k})`:''} — tap the facility instead`)}catch(e){toast('Location not available — tap the facility instead')}},
+  saveFacLoc:async k=>{toast('Finding your location…');try{const c=await getPos();db.settings.facLoc={...(db.settings.facLoc||{}),[k]:[c.latitude,c.longitude]};save();render();toast(`${k} location saved`)}catch(e){toast('Could not get location — allow location access for this app')}},
+  clearFacLoc:k=>{const L={...(db.settings.facLoc||{})};delete L[k];db.settings.facLoc=L;save();render()},
+  saveFuWa:()=>{formState.sendWa=true;const v=readForm();if(v)formState.onSave(v);else formState.sendWa=false},
+  pickWho:id=>{const c=contacts().find(x=>x.id===id);if(!c)return;$('#f_person').value=c.name;const ph=$('#f_phone');if(ph)ph.value=c.phone;refreshWho();
+    const w=$('#f_what');if(w&&!w.value&&!isMobile())w.focus()},
+  newContact:()=>contactForm(), editContact:id=>contactForm(contacts().find(c=>c.id===id)),
+  delegateTo:id=>{const c=contacts().find(x=>x.id===id);fuForm(null,{company:c.company,person:c.name,phone:c.phone})},
+  chatTo:id=>{const c=contacts().find(x=>x.id===id);openWA(c.phone,`Hi ${firstName(c.name)}, `)},
+  teamFilter:a=>{db.teamFilter=a;save();render()},
   saveForm:()=>{const v=readForm();if(v)formState.onSave(v)},
   delForm:()=>formState.onDelete(),
   saveSettings:()=>{db.settings.url=$('#s_url').value.trim();db.settings.token=$('#s_token').value.trim();
-    db.settings.myName=$('#s_name').value.trim()||'Shubham';save();toast('Saved');sync(true)},
+    db.settings.myName=$('#s_name').value.trim()||'Shubham';db.settings.waMode=$('#s_wa').value;save();toast('Saved');sync(true)},
   syncNow:()=>sync(true),
   backup:()=>{const d={};TYPES.forEach(t=>d[t]=db[t]);shareFile(`WorkLog backup ${today()}.json`,JSON.stringify(d,null,1),'application/json')},
   resync:()=>{if(!confirm('Send every record on this phone to the Sheet again?'))return;
@@ -562,8 +596,75 @@ function mailListHtml(){
       <button class="mini" data-act="reopenMail" data-arg="${m.id}">↺ Bring back</button></div>`).join('')}</div>`:'');
   return h;
 }
+document.addEventListener('change',e=>{if(e.target.name==='f_company')refreshWho()});
 document.addEventListener('input',e=>{if(e.target.id==='mailQ'){db.mailQ=e.target.value;save();const l=$('#mailList');if(l)l.innerHTML=mailListHtml()}});
 document.addEventListener('change',e=>{if(e.target.id==='mailSort'){db.mailSort=e.target.value;save();const l=$('#mailList');if(l)l.innerHTML=mailListHtml()}});
+/* team contacts: stored as notes rows (kind=contact): payee=name, purpose=phone, date=company, time=role */
+const contacts=()=>live('notes').filter(n=>n.kind==='contact').map(n=>({id:n.id,name:n.payee||'',phone:n.purpose||'',company:n.date||'',role:n.time||'',rec:n}));
+const normPhone=x=>{let p=String(x||'').replace(/\D/g,'');if(p.length===11&&p[0]==='0')p=p.slice(1);if(p.length===10)p='91'+p;return p};
+const findContact=(name,phone)=>{const n=String(name||'').trim().toLowerCase(),p=normPhone(phone);
+  return contacts().find(c=>(p&&normPhone(c.phone)===p)||(n&&c.name.toLowerCase()===n))};
+const usage=c=>live('followups').filter(f=>f.person===c.name).length;
+const teamOf=co=>contacts().filter(c=>!co||c.company===co).sort((a,b)=>usage(b)-usage(a)||a.name.localeCompare(b.name));
+function saveContact(name,phone,company,role){
+  name=String(name||'').trim();if(!name||!normPhone(phone))return;const ex=findContact(name,phone);
+  put('notes',{...(ex?ex.rec:{}),kind:'contact',payee:name,purpose:String(phone).trim(),date:company||(ex&&ex.company)||defCo(),time:role!=null?role:(ex?ex.role:''),tripId:''})}
+const isMobile=()=>/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+function openWA(phone,text){
+  const p=normPhone(phone),t=encodeURIComponent(text),mode=db.settings.waMode||'auto';
+  const m=mode==='auto'?(isMobile()?'link':'app'):mode;
+  if(m==='app'){location.href=`whatsapp://send?${p?'phone='+p+'&':''}text=${t}`;return}
+  if(m==='web'){window.open(`https://web.whatsapp.com/send?${p?'phone='+p+'&':''}text=${t}`,'_blank');return}
+  location.href=`https://wa.me/${p}?text=${t}`}
+const me=()=>db.settings.myName||'Shubham';
+const firstName=n=>String(n||'').replace(/^(mr|ms|mrs|dr)\.?\s+/i,'').split(' ')[0];
+const msgHandover=f=>`Hi ${firstName(f.person)}, please take this up: ${f.what}${f.due?` — needed by ${fmtDate(f.due,true)}`:''}.${f.notes?`\n${f.notes}`:''}\nKindly confirm once you've got it. – ${me()}`;
+const msgNudge=f=>`Hi ${firstName(f.person)}, following up on ${f.what}${f.due?` — needed by ${fmtDate(f.due)}`:''}. Please share an update. – ${me()}`;
+function refreshWho(){
+  const box=$('#whoChips');if(!box)return;const c=document.querySelector('input[name="f_company"]:checked');
+  const co=c?c.value:'',T=teamOf(co),cur=($('#f_person')||{}).value||'';
+  box.innerHTML=T.length?T.map(t=>`<span class="fchip ${t.name===cur?'on':''}" data-act="pickWho" data-arg="${t.id}">${esc(t.name)}${t.role?` <span class="small">· ${esc(t.role)}</span>`:''}</span>`).join('')
+    :`<span class="small">No ${esc(co)} contacts yet — type a name and number once and they're saved for next time.</span>`}
+/* ---------- attendance (facility punching), stored as hours rows with category 'Attendance' ---------- */
+const FAC=[{k:'Waghodia',sub:'RFME',co:'RFME',c:'#0b6cbd'},{k:'Gorwa',sub:'LPHC · PFTD',co:'LPHC',c:'#0d9488'},{k:'Other site',sub:'Client / travel',co:'',c:'#6b7280'}];
+const facOf=k=>FAC.find(f=>f.k===k)||{k,sub:'',c:'#6b7280'};
+const punches=()=>live('hours').filter(h=>h.category==='Attendance');
+const P=()=>punches().filter(h=>!h.end).sort((a,b)=>b.start.localeCompare(a.start))[0]||null;
+const pHrs=x=>x.end?(+x.hrs||0):diffH(x.start,new Date());
+function punchIn(k,how){const now=nowStamp();punches().filter(r=>!r.end).forEach(r=>finish(r,now));
+  put('hours',{company:k,project:'Attendance',category:'Attendance',start:now,end:'',hrs:0,note:how||''});toast(`Punched in at ${k} · ${now.slice(11,16)}`)}
+function punchOut(){const p=P();if(!p)return;const hrs=finish(p,nowStamp());toast(hrs<1/60?'Punch cancelled':`Punched out of ${p.company} · ${fmtH(hrs)}`)}
+function punchForm(x){
+  const v=x?{fac:x.company,date:x.start.slice(0,10),from:x.start.slice(11,16),to:x.end?x.end.slice(11,16):'',note:x.note}:{fac:FAC[0].k,date:today(),from:'09:30',to:'18:30'};
+  form(x?'Edit punch':'Add punch',[{k:'fac',label:'Facility',type:'choice',options:FAC.map(f=>f.k)},{k:'date',label:'Date',type:'date'},
+    {k:'from',label:'In',type:'time',pair:true},{k:'to',label:'Out (leave empty if still there)',type:'time'},{k:'note',label:'Note'}],v,y=>{
+    if(!y.from){toast('In time is needed');return}const start=`${y.date}T${y.from}`;let end='';
+    if(y.to){end=`${y.date}T${y.to}`;if(end<=start){const d=new Date(y.date);d.setDate(d.getDate()+1);end=`${dstr(d)}T${y.to}`}}
+    put('hours',{...(x||{}),company:y.fac||FAC[0].k,project:'Attendance',category:'Attendance',start,end,hrs:end?+diffH(start,end).toFixed(3):0,note:y.note});closeForm()
+  },x?()=>{if(del('hours',x))closeForm()}:null)}
+function nearestFac(lat,lng){const L=db.settings.facLoc||{};let best=null;
+  Object.keys(L).forEach(k=>{const [a,b]=L[k],R=6371,dl=(a-lat)*Math.PI/180,dg=(b-lng)*Math.PI/180;
+    const d=2*R*Math.asin(Math.sqrt(Math.sin(dl/2)**2+Math.cos(lat*Math.PI/180)*Math.cos(a*Math.PI/180)*Math.sin(dg/2)**2));
+    if(!best||d<best.d)best={k,d}});return best}
+const getPos=()=>new Promise((ok,no)=>navigator.geolocation?navigator.geolocation.getCurrentPosition(p=>ok(p.coords),no,{enableHighAccuracy:true,timeout:12000}):no(new Error('No GPS')));
+function exportAttendance(){
+  const ms=today().slice(0,7);const A=punches().filter(x=>x.start.startsWith(ms)&&x.end).sort((a,b)=>a.start.localeCompare(b.start));
+  const q=s=>`"${String(s??'').replace(/"/g,'""')}"`;
+  const rows=[['Date','Day','Facility','In','Out','Hours','Note'],...A.map(x=>[x.start.slice(0,10),DAY[new Date(x.start).getDay()],x.company,x.start.slice(11,16),x.end.slice(11,16),(+x.hrs).toFixed(2),x.note])];
+  FAC.forEach(f=>{const s=A.filter(x=>x.company===f.k);if(s.length)rows.push(['','','Total '+f.k,'','',sum(s).toFixed(2),uniq(s.map(x=>x.start.slice(0,10))).length+' days'])});
+  shareFile(`Attendance ${MO[+ms.slice(5)-1]} ${ms.slice(0,4)}.csv`,rows.map(r=>r.map(q).join(',')).join('\n'),'text/csv')}
+function punchCard(){
+  const p=P(),td=today();
+  const todayBy=FAC.map(f=>({f,h:punches().filter(x=>x.company===f.k&&x.start.startsWith(td)).reduce((a,x)=>a+pHrs(x),0)})).filter(x=>x.h>0);
+  const line=todayBy.length?`<div class="small" style="margin-top:8px">Today: ${todayBy.map(x=>`${x.f.k} <b>${fmtH(x.h)}</b>`).join(' · ')}</div>`:'';
+  if(p){const f=facOf(p.company),el=diffH(p.start,new Date()),stale=el>12||p.start.slice(0,10)!==td;
+    return `<div class="card punch" style="--co:${f.c}"><div class="row"><div class="grow"><div class="small">🏢 Punched in · since ${p.start.slice(11,16)}${p.start.slice(0,10)!==td?' ('+fmtDate(p.start)+')':''}</div>
+      <div class="big">${esc(f.k)} <span class="small">${esc(f.sub)}</span></div></div><div class="elapsed sm" id="pElapsed">${fmtH(el)}</div></div>
+      ${stale?`<div class="over small" style="margin:6px 0">Still punched in from ${fmtDate(p.start,true)} — forgot to punch out? <a href="#" data-act="editPunch" data-arg="${p.id}">Fix the time</a></div>`:''}
+      <div class="btnrow"><button class="danger-fill" data-act="punchOut">Punch out</button>${FAC.filter(x=>x.k!==p.company).map(x=>`<button data-act="punchIn" data-arg="${x.k}">Move to ${x.k}</button>`).join('')}</div>${line}</div>`}
+  const gps=db.settings.facLoc&&Object.keys(db.settings.facLoc).length&&navigator.geolocation;
+  return `<div class="card"><div class="row"><div class="label grow" style="margin:0">Punch in</div>${gps?'<button class="mini" data-act="punchHere">📍 Punch in here</button>':''}</div>
+    <div class="facs">${FAC.map(f=>`<button class="fac" style="--co:${f.c}" data-act="punchIn" data-arg="${f.k}"><b>${f.k}</b><span>${f.sub}</span></button>`).join('')}</div>${line}</div>`}
 const VIEWS={
   home(){
     const t=T(),td=today(),trip=openTrip();
@@ -573,7 +674,7 @@ const VIEWS={
       <button class="stop" data-act="stop">Stop</button></div>`;
     const cos=`<div class="card"><div class="label">${t?'Switch to':'Start working on'}</div><div class="cos">${COS.map(c=>
       `<button class="co ${t&&t.company===c?'run':''}" style="--co:${CO_COLOR[c]}" data-act="start" data-arg="${c}" aria-label="${c}">${logoImg(c)}<span>${t&&t.company===c?'● Running':'Start ▸'}</span></button>`).join('')}</div></div>`;
-    const quick=`<div class="quick"><button data-act="newTask">＋ Task</button><button data-act="newFu">＋ Follow-up</button>
+    const quick=`<div class="quick"><button data-act="newTask">＋ Task</button><button data-act="newFu">＋ Delegate</button>
       ${trip?'<button data-act="newNote">＋ Payment note</button>':'<button data-act="newTrip">＋ Start trip</button>'}<button data-act="newHours">＋ Log hours</button></div>`;
     const tripH=trip?`<div class="label">On trip</div>`+tripCard(trip,true):'';
     const H=doneH().filter(x=>x.start.startsWith(td));
@@ -586,7 +687,7 @@ const VIEWS={
       const tks=live('tasks').filter(x=>!x.done).sort((a,b)=>byDue(a,b)||(a.priority==='High'?-1:b.priority==='High'?1:0));
       const lateF=fus.filter(f=>f.due&&f.due<=td).length,lateT=tks.filter(x=>x.due&&x.due<=td).length;
       return `<div class="dash">
-        <div>${timer}${cos}${quick}${tripH}${todayH}</div>
+        <div>${punchCard()}${timer}${cos}${quick}${tripH}${todayH}</div>
         <div>${mailCard(waitingMail())}<div class="row"><div class="label grow">Waiting on (${fus.length})${lateF?` · <span class="over">${lateF} due</span>`:''}</div><button class="primary" data-act="newFu">＋ Follow-up</button></div>
           <div class="card">${fus.map(fuRow).join('')||empty('Nobody to chase.')}</div></div>
         <div><div class="row"><div class="label grow">Open tasks (${tks.length})${lateT?` · <span class="over">${lateT} due</span>`:''}</div><button class="primary" data-act="newTask">＋ Task</button></div>
@@ -595,7 +696,7 @@ const VIEWS={
     }
     const fus=live('followups').filter(f=>f.status!=='done'&&f.due&&f.due<=td).sort(byDue);
     const tks=live('tasks').filter(x=>!x.done&&x.due&&x.due<=td).sort(byDue);
-    return timer+cos+quick+tripH+mailCard(waitingMail())+sec(`Follow-ups due (${fus.length})`,fus.map(fuRow).join('')||empty('Nobody to chase today.'))
+    return punchCard()+timer+cos+quick+tripH+mailCard(waitingMail())+sec(`Follow-ups due (${fus.length})`,fus.map(fuRow).join('')||empty('Nobody to chase today.'))
       +sec(`Tasks due (${tks.length})`,tks.map(taskRow).join('')||empty('Nothing due today.'))+todayH;
   },
   inbox(){
@@ -612,15 +713,24 @@ const VIEWS={
     const H=doneH(),ws=weekStart(),ms=today().slice(0,7);
     const w=c=>sum(H.filter(x=>x.company===c&&x.start.slice(0,10)>=ws)),m=c=>sum(H.filter(x=>x.company===c&&x.start.startsWith(ms)));
     const tr=sum(H.filter(x=>x.category==='Travel'&&x.start.startsWith(ms)));
-    let h=`<div class="card"><table><tr><th></th><th>This week</th><th>${MO[+ms.slice(5)-1]}</th></tr>
+    const PA=punches(),pm=f=>PA.filter(x=>x.company===f&&x.start.startsWith(ms)),pw=f=>PA.filter(x=>x.company===f&&x.start.slice(0,10)>=ws);
+    const days=L=>uniq(L.map(x=>x.start.slice(0,10))).length,ph=L=>L.reduce((a,x)=>a+pHrs(x),0);
+    let h=`<div class="label">Attendance</div><div class="card"><table><tr><th>Facility</th><th>This week</th><th>${MO[+ms.slice(5)-1]}</th><th>Days</th></tr>
+      ${FAC.map(f=>`<tr><td>${f.k}</td><td>${fmtH(ph(pw(f.k)))}</td><td>${fmtH(ph(pm(f.k)))}</td><td>${days(pm(f.k))}</td></tr>`).join('')}
+      <tr><td>Total</td><td>${fmtH(ph(PA.filter(x=>x.start.slice(0,10)>=ws)))}</td><td>${fmtH(ph(PA.filter(x=>x.start.startsWith(ms))))}</td><td>${days(PA.filter(x=>x.start.startsWith(ms)))}</td></tr></table>
+      <div class="btnrow"><button data-act="newPunch">＋ Add punch</button><button data-act="exportAttendance">Export attendance</button></div></div>
+      <div class="label">Work by company</div><div class="card"><table><tr><th></th><th>This week</th><th>${MO[+ms.slice(5)-1]}</th></tr>
       ${COS.map(c=>`<tr><td>${c}</td><td>${fmtH(w(c))}</td><td>${fmtH(m(c))}</td></tr>`).join('')}
       <tr><td>Total</td><td>${fmtH(COS.reduce((a,c)=>a+w(c),0))}</td><td>${fmtH(COS.reduce((a,c)=>a+m(c),0))}</td></tr></table>
       <div class="small" style="margin-top:6px">Travel this month: ${fmtH(tr)}</div>
       <div class="btnrow"><button data-act="newHours">＋ Log hours</button><button data-act="exportHours">Export month</button></div></div>`;
     const cut=new Date();cut.setDate(cut.getDate()-45);const cs=dstr(cut);
     const L=H.filter(x=>x.start.slice(0,10)>=cs).sort((a,b)=>b.start.localeCompare(a.start));
-    const days=uniq(L.map(x=>x.start.slice(0,10))).reverse();
-    h+=days.map(d=>{const D=L.filter(x=>x.start.startsWith(d));return `<div class="label">${fmtDate(d,true)} · ${fmtH(sum(D))}</div><div class="card">${D.map(hoursRow).join('')}</div>`}).join('')
+    const LP=PA.filter(x=>x.start.slice(0,10)>=cs).sort((a,b)=>a.start.localeCompare(b.start));
+    const dl=uniq([...L,...LP].map(x=>x.start.slice(0,10))).reverse();
+    h+=dl.map(d=>{const D=L.filter(x=>x.start.startsWith(d)),A=LP.filter(x=>x.start.startsWith(d));
+      const att=A.length?`<div class="item att">🏢 <div class="main">${A.map(x=>`<a href="#" data-act="editPunch" data-arg="${x.id}" class="seg" style="--co:${facOf(x.company).c}">${esc(x.company)} ${x.start.slice(11,16)}–${x.end?x.end.slice(11,16):'now'}</a>`).join(' ')}</div><b>${fmtH(ph(A))}</b></div>`:'';
+      return `<div class="label">${fmtDate(d,true)}${A.length?` · at facility ${fmtH(ph(A))}`:''}${D.length?` · work ${fmtH(sum(D))}`:''}</div><div class="card">${att}${D.map(hoursRow).join('')}</div>`}).join('')
       ||sec('Entries',empty('Tap a company on Home to start the timer.'));
     return h;
   },
@@ -649,7 +759,14 @@ const VIEWS={
   followups(){
     const A=live('followups'),open=A.filter(f=>f.status!=='done').sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
     const done=A.filter(f=>f.status==='done').sort((a,b)=>b.updatedAt-a.updatedAt);
-    let h=`<div class="row" style="margin:6px 0"><span class="grow small">${open.length} open</span><button class="primary" data-act="newFu">＋ Follow-up</button></div>`;
+    const tf=db.teamFilter||'All',team=teamOf(tf==='All'?'':tf);
+    let h=`<div class="row" style="margin:6px 0"><span class="grow small">${open.length} open</span><button class="primary" data-act="newFu">＋ Delegate / follow-up</button></div>
+      <div class="row" style="margin:14px 2px 6px"><div class="label grow" style="margin:0" data-act="toggleDone" data-arg="hideTeam">Team (${contacts().length}) ${db.hideTeam?'▸':'▾'}</div><button class="mini" data-act="newContact">＋ Contact</button></div>
+      ${db.hideTeam?'':`<div class="card"><div class="row wrap gap" style="margin-bottom:6px">${['All',...COS].map(c=>`<span class="fchip ${tf===c?'on':''}" data-act="teamFilter" data-arg="${c}">${c}</span>`).join('')}</div>
+        ${team.map(c=>`<div class="item"><div class="main" data-act="editContact" data-arg="${c.id}"><div class="t">${esc(c.name)}</div>
+          <div class="small">${coTag(c.company)} ${esc(c.role||'')}${c.role?' · ':''}${esc(c.phone)}</div></div>
+          <button class="mini" data-act="chatTo" data-arg="${c.id}">Chat</button><button class="wa mini" data-act="delegateTo" data-arg="${c.id}">Delegate</button></div>`).join('')
+          ||empty('Add the people you hand work to — they show up as one-tap names when you delegate.')}</div>`}`;
     const people=uniq(open.map(f=>f.person));
     h+=people.length?people.map(p=>{const P=open.filter(f=>f.person===p);return sec(`${esc(p)} (${P.length})`,P.map(fuRow).join(''))}).join('')
       :sec('Open',empty('Nobody to chase. Add one when you hand something to the team.'));
@@ -663,8 +780,13 @@ const VIEWS={
       <div class="f"><label for="s_url">Web app URL (from Apps Script)</label><input id="s_url" value="${esc(s.url||'')}" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></div>
       <div class="f"><label for="s_token">Access key</label><input id="s_token" value="${esc(s.token||'')}" autocomplete="off"></div>
       <div class="f"><label for="s_name">Name for WhatsApp sign-off</label><input id="s_name" value="${esc(s.myName||'Shubham')}"></div>
+      <div class="f"><label for="s_wa">WhatsApp on this device</label><select id="s_wa">${[['auto','Automatic (app on laptop, link on phone)'],['app','WhatsApp app'],['web','WhatsApp Web (browser)'],['link','wa.me link']].map(([k,l])=>`<option value="${k}" ${(s.waMode||'auto')===k?'selected':''}>${l}</option>`).join('')}</select></div>
       <div class="btnrow"><button class="primary" data-act="saveSettings">Save & sync</button><button data-act="syncNow">Sync now</button></div>
       <div class="small" style="margin-top:10px">${n} change${n===1?'':'s'} waiting · last synced ${s.lastSync?new Date(s.lastSync).toLocaleString('en-IN'):'never'}</div></div>
+      <div class="card"><div class="label">Facility locations (for 📍 Punch in here)</div>
+        ${FAC.filter(f=>f.k!=='Other site').map(f=>{const L=(s.facLoc||{})[f.k];return `<div class="item"><div class="main"><div class="t">${f.k}</div><div class="small">${L?'Saved on this device':'Not set'}</div></div>
+          <button class="mini" data-act="saveFacLoc" data-arg="${f.k}">Use my current location</button>${L?`<button class="mini ghost" data-act="clearFacLoc" data-arg="${f.k}">✕</button>`:''}</div>`}).join('')}
+        <div class="small" style="margin-top:6px">Stand at the facility and tap once. Saved only on this device.</div></div>
       <div class="card"><div class="label">Data</div><div class="btnrow"><button data-act="backup">Backup file</button><button data-act="resync">Re-send all to Sheet</button></div>
       <div class="small" style="margin-top:8px">Everything is saved on this device first and copied to your Sheet whenever you're online.</div></div>
       <div class="btnrow"><button data-act="go" data-arg="home">← Back</button></div>`;
@@ -680,7 +802,7 @@ function render(){
   if(fq!==null&&$('#mailQ')){const q=$('#mailQ');q.focus();q.setSelectionRange(fq,fq)}setStatus();applyAccent();coBar();
   const n=waitingMail().length,bd=$('#mailBadge');bd.textContent=n;bd.classList.toggle('on',n>0);
 }
-setInterval(()=>{const t=T(),e=$('#elapsed');if(e&&t)e.textContent=fmtH(diffH(t.start,new Date()));coBar()},15000);
+setInterval(()=>{const t=T(),e=$('#elapsed');if(e&&t)e.textContent=fmtH(diffH(t.start,new Date()));const p=P(),pe=$('#pElapsed');if(pe&&p)pe.textContent=fmtH(diffH(p.start,new Date()));coBar()},15000);
 setInterval(()=>{if(document.visibilityState==='visible'&&!syncing)sync(false)},60000);
 WIDE.addEventListener&&WIDE.addEventListener('change',()=>render());
 if(db.timer){const t=db.timer;delete db.timer;const r={id:uid(),company:t.company,project:t.project,category:t.category,start:t.start,end:'',hrs:0,note:'',updatedAt:Date.now()};
